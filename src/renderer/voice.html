@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' blob:; worker-src 'self' blob:; media-src 'self' blob: mediastream:; connect-src 'self' ws://localhost:* http://localhost:*"
+    />
+    <title>ZVYRA Voice</title>
+  </head>
+  <body data-window="voice">
+    <script type="module" src="./src/voice/voice.ts"></script>
+  </body>
+</html>

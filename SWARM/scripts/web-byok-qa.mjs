@@ -1,0 +1,50 @@
+import { chromium } from 'playwright-core';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, mkdirSync, openSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+const cwd=resolve('swarm-web-publish'),port=3219;
+const log=openSync('reliability-ui.log','w');
+const server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{cwd,windowsHide:true,stdio:['ignore',log,log],env:{...process.env,CLERK_SECRET_KEY:'',NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:'',SWARM_BUILD_DIR:'.next-reliability-ui',SWARM_API_URL:'',SWARM_DATABASE_URL:'',DATABASE_URL:'',SWARM_DATA_DIR:mkdtempSync(join(tmpdir(),'swarm-ui-'))}});
+let browser;
+try {
+  for(let i=0;i<90;i++){try{if((await fetch(`http://127.0.0.1:${port}/api/health`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,500));}
+  browser=await chromium.launch({channel:'msedge',headless:true});
+  const page=await browser.newPage({viewport:{width:1365,height:950}});
+  await page.goto(`http://127.0.0.1:${port}/app/settings`);
+  await page.getByRole('button',{name:'Providers',exact:true}).click();
+  await page.getByRole('heading',{name:'Connect your AI providers'}).waitFor();
+  const card=page.locator('form').filter({has:page.getByRole('heading',{name:'Groq',exact:true})});
+  await card.getByLabel('API key').fill('ui-fixture-not-a-real-key');await card.getByRole('button',{name:'Save key'}).click();
+  await card.getByText('Key configured',{exact:true}).waitFor();
+  if(await card.getByLabel('API key').inputValue()!=='')throw new Error('Saved key remains in input');
+  mkdirSync('_screenshots',{recursive:true});await page.screenshot({path:'_screenshots/byok-desktop.png',fullPage:true});
+  await card.getByRole('button',{name:'Remove',exact:true}).click();await card.getByText('Not connected',{exact:true}).waitFor();
+  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'_screenshots/byok-mobile.png',fullPage:true});
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw new Error('Mobile page overflows horizontally');
+  await card.getByLabel('API key').fill('ui-fixture-not-a-real-key');await card.getByRole('button',{name:'Save key'}).click();
+  await card.getByText('Key configured',{exact:true}).waitFor();
+  await page.goto(`http://127.0.0.1:${port}/app`);
+  await page.getByTestId('input-chat-prompt').fill('Mobile layout check');
+  await page.getByTestId('button-send-message').waitFor();
+  for(let i=0;i<30&&await page.getByTestId('button-send-message').isDisabled();i++)await page.waitForTimeout(500);
+  if(await page.getByTestId('button-send-message').isDisabled())throw new Error('Configured provider is blocked by transient discovery state');
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw new Error('Mobile chat overflows horizontally');
+  await page.screenshot({path:'_screenshots/chat-mobile.png',fullPage:true});
+  await page.getByTestId('button-toggle-history').click();
+  await page.getByRole('button',{name:'Close conversation history'}).waitFor();
+  await page.waitForTimeout(450);
+  await page.screenshot({path:'_screenshots/chat-mobile-history.png',fullPage:true});
+  await page.getByRole('button',{name:'Close conversation history'}).click({position:{x:380,y:400}});
+  await page.setViewportSize({width:320,height:700});
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw new Error('Narrow mobile chat overflows horizontally');
+  await page.goto(`http://127.0.0.1:${port}/app?mode=build`);
+  await page.getByTestId('input-chat-prompt').waitFor();
+  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw new Error('Narrow mobile build overflows horizontally');
+  await page.screenshot({path:'_screenshots/build-mobile-narrow.png',fullPage:true});
+  await page.getByTestId('button-send-message').scrollIntoViewIfNeeded();
+  const sendVisible=await page.getByTestId('button-send-message').evaluate(el=>{const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});
+  if(!sendVisible)throw new Error('Narrow mobile build send control cannot be reached');
+  console.log('BYOK settings and mobile chat/build: save, cleared secret input, removal, 390px/320px layouts, composer, and history passed. No provider inference called.');
+} finally {await browser?.close();server.kill();}

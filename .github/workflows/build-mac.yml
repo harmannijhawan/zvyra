@@ -1,0 +1,52 @@
+name: Build and release macOS
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*-macos'
+permissions:
+  contents: write
+jobs:
+  build-mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix backend ci
+      - run: npm --prefix backend run build
+      - run: npm run build
+      - name: Package native macOS installer
+        run: npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zvyra-macos-${{ matrix.arch }}
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+      - name: Publish macOS release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ZVYRA 0.1.0 for macOS
+          prerelease: true
+          body: |
+            ZVYRA 0.1.0 preview for macOS. Download the arm64 DMG for Apple Silicon or the x64 DMG for Intel.
+            These builds are unsigned and not notarized. This is a macOS desktop release, not an iPhone/iPad installer.
+          files: |
+            release/*.dmg
+            release/*.zip

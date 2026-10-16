@@ -1,0 +1,35 @@
+{
+  "name": "@zvyra/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "smoke": "node scripts/run-smoke.mjs"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "4.2.6",
+    "@runonflux/nat-upnp": "^1.0.2",
+    "diff": "9.0.0",
+    "node-html-parser": "9.0.4",
+    "playwright-core": "1.63.0",
+    "qrcode": "^1.5.4",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.22.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "electron": "44.5.1",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3",
+    "@types/ws": "^8.18.2",
+    "@types/qrcode": "^1.5.6"
+  }
+}

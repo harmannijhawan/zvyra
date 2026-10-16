@@ -1,0 +1,50 @@
+:root {
+  /* ink */
+  --ink-900: #0b0f19;
+  --ink-800: #1a2133;
+  --ink-700: #2f3850;
+  --ink-600: #4a5470;
+  --ink-500: #5b6580; /* body text on white: ~5.9:1 */
+
+  /* sky / powder / lavender */
+  --sky-25: #fafcff;
+  --sky-50: #f4f8ff;
+  --sky-100: #e8f1ff;
+  --sky-200: #d5e6ff;
+  --sky-300: #b5d4ff;
+  --sky-400: #86b8ff;
+  --blue-500: #3b7cff;
+  --blue-600: #2862f0;
+  --blue-700: #1c48d2;
+  --cyan-300: #8eeaff;
+  --lav-100: #f1edff;
+  --lav-200: #e3dcff;
+  --lav-300: #c9bcff;
+  --lav-500: #8c7cff;
+
+  /* app (dark glass mocks) */
+  --navy-950: #050914;
+  --navy-900: #0a1226;
+  --navy-800: #111c38;
+
+  --accent-grad: linear-gradient(100deg, #2560f2 0%, #3f8dff 42%, #8a7dff 100%);
+
+  --font: 'Manrope Variable', 'Segoe UI Variable Display', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+  --di-spring: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --r-sm: 12px;
+  --r-md: 20px;
+  --r-lg: 28px;
+  --r-xl: 36px;
+
+  --shadow-soft: 0 1px 2px rgba(20, 40, 100, 0.05), 0 12px 32px -12px rgba(30, 70, 170, 0.18);
+  --shadow-float: 0 2px 6px rgba(20, 40, 100, 0.05), 0 40px 80px -32px rgba(25, 60, 170, 0.35);
+
+  --nav-h: 72px;
+  --page: 1240px;
+  --gutter: clamp(20px, 4vw, 48px);
+}

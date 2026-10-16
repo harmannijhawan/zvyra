@@ -1,0 +1,107 @@
+# ZVYRA Windows installer. Build with: npm run dist
+appId: ai.zvyra.desktop
+productName: ZVYRA
+copyright: Copyright © 2026 ZVYRA
+directories:
+  output: release
+  buildResources: build
+
+# Use the Electron already in node_modules (no download) and its prebuilt native addons.
+electronDist: node_modules/electron/dist
+npmRebuild: false
+nodeGypRebuild: false
+
+files:
+  - out/**/*
+  - package.json
+  - backend/dist/index.cjs
+  - backend/dist/ui.cjs
+  - backend/dist/speech.ps1
+  - backend/dist/speech.darwin.mjs
+  - '!**/*.map'
+  - '!**/node_modules/**/{test,tests,__tests__,docs,example,examples}/**'
+  - '!**/node_modules/**/*.{md,markdown,map}'
+  - '!**/node_modules/**/*.d.ts'
+
+asar: true
+asarUnpack:
+  - backend/dist/speech.ps1
+  # macOS speech worker is spawned as a child Node process, so it must live on disk.
+  - backend/dist/speech.darwin.mjs
+  - node_modules/sherpa-onnx-*/**
+  - node_modules/@nut-tree-fork/libnut-win32/**
+  # macOS native input module (installed on a Mac via `npm i -D @nut-tree-fork/libnut-darwin`).
+  - node_modules/@nut-tree-fork/libnut-darwin/**
+
+extraResources:
+  - from: resources/kws
+    to: kws
+  - from: resources/logo.png
+    to: logo.png
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+  executableName: ZVYRA
+  # Unsigned build: Windows SmartScreen shows "More info → Run anyway" until the app is code-signed.
+  signAndEditExecutable: true
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: ZVYRA
+  menuCategory: false
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  installerSidebar: build/installerSidebar.bmp
+  uninstallerSidebar: build/uninstallerSidebar.bmp
+  installerHeader: build/installerHeader.bmp
+  artifactName: ZVYRA-Setup-${version}.${ext}
+  uninstallDisplayName: ZVYRA
+
+# ------------------------------------------------------------------------
+# macOS build. Produces a .dmg (and a .zip for auto-update friendliness).
+# IMPORTANT: a macOS .dmg can ONLY be built on macOS. Run `npm run dist:mac`
+# on a Mac (Apple Silicon or Intel) with Xcode command line tools installed.
+# Building on Windows will fail — electron-builder cannot cross-build for mac.
+# ------------------------------------------------------------------------
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  icon: build/icon.png
+  # Hardened runtime is required for notarization. Entitlements below allow
+  # the bundled native addons (sherpa-onnx, libnut) to load.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Permissions the app needs at runtime on macOS. The OS prompts the user.
+  extendInfo:
+    NSMicrophoneUsageDescription: ZVYRA uses the microphone for push-to-talk and the wake word.
+    NSCameraUsageDescription: ZVYRA can use the camera when you ask it to see.
+    NSAppleEventsUsageDescription: ZVYRA automates other apps only with your approval.
+    NSAccessibilityUsageDescription: ZVYRA controls the mouse and keyboard only with your approval.
+  # Unsigned by default. For distribution, set CSC_LINK / CSC_KEY_PASSWORD and
+  # notarize with an Apple Developer account (see release/mac/README.md).
+
+dmg:
+  title: ZVYRA ${version}
+  artifactName: ZVYRA-${version}-${arch}.${ext}
+  # Standard drag-to-Applications layout.
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications

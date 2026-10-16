@@ -1,0 +1,1037 @@
+{
+  "source": "D:\\SWARM---ai",
+  "version": "1.0.6",
+  "copiedAt": "2026-10-15T13:48:56.286Z",
+  "files": [
+    {
+      "path": "docs/MOBILE_UI_REBUILD.md",
+      "sourceSha256": "6621989757ee3892cba23c9659d7327f68e43148379c49689e1ed4bbd8210696",
+      "integratedSha256": "6621989757ee3892cba23c9659d7327f68e43148379c49689e1ed4bbd8210696"
+    },
+    {
+      "path": "docs/REMOTE_PROTOCOL.md",
+      "sourceSha256": "6cecc89a658d937d3ef81e7816c8e40c09c1ba99c518ed8410a28e816181dd71",
+      "integratedSha256": "6cecc89a658d937d3ef81e7816c8e40c09c1ba99c518ed8410a28e816181dd71"
+    },
+    {
+      "path": "docs/SWARM_PLATFORM_SPEC.md",
+      "sourceSha256": "ac673f60c749155984aba471cda4ebfb5b8e59f208080756dd60afa3a4152e41",
+      "integratedSha256": "ac673f60c749155984aba471cda4ebfb5b8e59f208080756dd60afa3a4152e41"
+    },
+    {
+      "path": "electron/account/managed.ts",
+      "sourceSha256": "4cd92eebf3798b142cfe6793d1c20ce0c627e9a35951cc933945853d152d6717",
+      "integratedSha256": "4cd92eebf3798b142cfe6793d1c20ce0c627e9a35951cc933945853d152d6717"
+    },
+    {
+      "path": "electron/account/sync.ts",
+      "sourceSha256": "be1acd9f9e2094144dbfb9e0d597c5da1856fc5fc61a60cb927f23a88a321bc1",
+      "integratedSha256": "be1acd9f9e2094144dbfb9e0d597c5da1856fc5fc61a60cb927f23a88a321bc1"
+    },
+    {
+      "path": "electron/agents/architectures.ts",
+      "sourceSha256": "fb37479f2d79cd5f44a04a17f06442b65b4e5bd0eaaeb8d5400c50348cd15ecf",
+      "integratedSha256": "fb37479f2d79cd5f44a04a17f06442b65b4e5bd0eaaeb8d5400c50348cd15ecf"
+    },
+    {
+      "path": "electron/agents/errors.ts",
+      "sourceSha256": "a23a1fdfba13f05ba1eebac52b6b6512bb741de2c6cef85964ec757d0a9a97b7",
+      "integratedSha256": "a23a1fdfba13f05ba1eebac52b6b6512bb741de2c6cef85964ec757d0a9a97b7"
+    },
+    {
+      "path": "electron/agents/orchestrator.ts",
+      "sourceSha256": "4a396c72d6bbfb60fe804d137580be609cbef56db0ed0828c8f31d21e047e949",
+      "integratedSha256": "4a396c72d6bbfb60fe804d137580be609cbef56db0ed0828c8f31d21e047e949"
+    },
+    {
+      "path": "electron/agents/protocol.ts",
+      "sourceSha256": "97521cce336d3f266988b13fd3896e2309eae04e39d3beb2f6ccaea4d49a85c3",
+      "integratedSha256": "97521cce336d3f266988b13fd3896e2309eae04e39d3beb2f6ccaea4d49a85c3"
+    },
+    {
+      "path": "electron/agents/research.ts",
+      "sourceSha256": "cd1b2c3aae1734e7a2235302f29a60d04366503fe2c6b1cffd9a093913f83c9d",
+      "integratedSha256": "cd1b2c3aae1734e7a2235302f29a60d04366503fe2c6b1cffd9a093913f83c9d"
+    },
+    {
+      "path": "electron/agents/roles.ts",
+      "sourceSha256": "5a1b04d5f3733d2d3d211be272c52b7196776a80dd0b8642bd5902536a90c85d",
+      "integratedSha256": "5a1b04d5f3733d2d3d211be272c52b7196776a80dd0b8642bd5902536a90c85d"
+    },
+    {
+      "path": "electron/agents/runContext.ts",
+      "sourceSha256": "546882f546c4dd500d11f52f7d1846b4f1006e906c9978b924ae6db77c72ced9",
+      "integratedSha256": "546882f546c4dd500d11f52f7d1846b4f1006e906c9978b924ae6db77c72ced9"
+    },
+    {
+      "path": "electron/agents/runtime.ts",
+      "sourceSha256": "285e4c0cbac7b62768c26a2ddc38324a3cd5cf452c6193fead73be23b864c4f2",
+      "integratedSha256": "285e4c0cbac7b62768c26a2ddc38324a3cd5cf452c6193fead73be23b864c4f2"
+    },
+    {
+      "path": "electron/agents/scheduler.ts",
+      "sourceSha256": "d138b4fecd60932660615eb2064ccd17ba86408e746fc50545604142db308031",
+      "integratedSha256": "d138b4fecd60932660615eb2064ccd17ba86408e746fc50545604142db308031"
+    },
+    {
+      "path": "electron/agents/staticChecks.ts",
+      "sourceSha256": "a49377f61f65eb4ff5f6657969e6309d0ff9942f045d2acfb993ae9ffb61ba6f",
+      "integratedSha256": "a49377f61f65eb4ff5f6657969e6309d0ff9942f045d2acfb993ae9ffb61ba6f"
+    },
+    {
+      "path": "electron/agents/strategy.ts",
+      "sourceSha256": "25ab909480b33cd0d438c77465668d76fa1fbb1aa5e6543f3e91ffb1d8004352",
+      "integratedSha256": "25ab909480b33cd0d438c77465668d76fa1fbb1aa5e6543f3e91ffb1d8004352"
+    },
+    {
+      "path": "electron/agents/taskState.ts",
+      "sourceSha256": "09d0d32b247d3a7d8f1c41cb991367ab215b51fc9263744a61c00b5fd32e7a51",
+      "integratedSha256": "09d0d32b247d3a7d8f1c41cb991367ab215b51fc9263744a61c00b5fd32e7a51"
+    },
+    {
+      "path": "electron/agents/verify.ts",
+      "sourceSha256": "3bdb20bcc0e4beba88c7638adad7babab036b85009e01610239b50bbc4784d4f",
+      "integratedSha256": "3bdb20bcc0e4beba88c7638adad7babab036b85009e01610239b50bbc4784d4f"
+    },
+    {
+      "path": "electron/browser/browser.ts",
+      "sourceSha256": "dfafb26b6821a65f4f34280b378950c53cb353d2b6b81b25eb2f1e94f600bb89",
+      "integratedSha256": "dfafb26b6821a65f4f34280b378950c53cb353d2b6b81b25eb2f1e94f600bb89"
+    },
+    {
+      "path": "electron/browser/domAudit.ts",
+      "sourceSha256": "a1eb467fa81503eebd15f8ccb267294a3fda6bdb7412f39e6a4ad7dca4bf55a8",
+      "integratedSha256": "a1eb467fa81503eebd15f8ccb267294a3fda6bdb7412f39e6a4ad7dca4bf55a8"
+    },
+    {
+      "path": "electron/chat/liveRunChat.ts",
+      "sourceSha256": "32b23729d01a3f165e1a28ed7b23b352c528056ba78a205176fdc56fd3f1754f",
+      "integratedSha256": "32b23729d01a3f165e1a28ed7b23b352c528056ba78a205176fdc56fd3f1754f"
+    },
+    {
+      "path": "electron/chat/quickComputer.ts",
+      "sourceSha256": "82dea8ef5418a5000c81c950f6053b035ccf0d4684fc87f8352602aef541419a",
+      "integratedSha256": "82dea8ef5418a5000c81c950f6053b035ccf0d4684fc87f8352602aef541419a"
+    },
+    {
+      "path": "electron/chat/router.ts",
+      "sourceSha256": "98d2536344d1e8d4f0eee8610573667bf2b1c1044affe7338f63d651532cece2",
+      "integratedSha256": "98d2536344d1e8d4f0eee8610573667bf2b1c1044affe7338f63d651532cece2"
+    },
+    {
+      "path": "electron/chat/service.ts",
+      "sourceSha256": "90bd96010cde4e8e8dcaf2a03ddf4203d7437d1d899057076932034b1d068646",
+      "integratedSha256": "90bd96010cde4e8e8dcaf2a03ddf4203d7437d1d899057076932034b1d068646"
+    },
+    {
+      "path": "electron/chat/toolRetryGuard.ts",
+      "sourceSha256": "f7cf61c65aa26054c391765df774ac57cf28a0474ad2a34eabe6d6102da8de82",
+      "integratedSha256": "f7cf61c65aa26054c391765df774ac57cf28a0474ad2a34eabe6d6102da8de82"
+    },
+    {
+      "path": "electron/chat/tools.ts",
+      "sourceSha256": "765c1afbccc422d82a7f2ad9e4259354aba3c322892a6e72c30a0b765e48f72a",
+      "integratedSha256": "765c1afbccc422d82a7f2ad9e4259354aba3c322892a6e72c30a0b765e48f72a"
+    },
+    {
+      "path": "electron/computer/service.ts",
+      "sourceSha256": "6eba4ff79bc3a2db72881b8f072aa545de3a2005f00126b857e4221e2f7675a9",
+      "integratedSha256": "0d9f60feeb0e938d6384eb269172b76b66b62b33fc0d1451d989633fa0de9e98"
+    },
+    {
+      "path": "electron/computer/windows.ts",
+      "sourceSha256": "64f45aaa3b588d4e927a820863d5b33bf967c1f7621f8dab446ea271ec88d90a",
+      "integratedSha256": "64f45aaa3b588d4e927a820863d5b33bf967c1f7621f8dab446ea271ec88d90a"
+    },
+    {
+      "path": "electron/core/artifacts.ts",
+      "sourceSha256": "d3dadba3f66ccfc1b31ff78e5e0bb028b801f0449a33f918d30aee52c3314f94",
+      "integratedSha256": "d3dadba3f66ccfc1b31ff78e5e0bb028b801f0449a33f918d30aee52c3314f94"
+    },
+    {
+      "path": "electron/core/bus.ts",
+      "sourceSha256": "3bae708bd6fe720405daa9cf9f1cb167606d9732749e4dcee24ae5a68ed13e71",
+      "integratedSha256": "3bae708bd6fe720405daa9cf9f1cb167606d9732749e4dcee24ae5a68ed13e71"
+    },
+    {
+      "path": "electron/core/checkpoint.ts",
+      "sourceSha256": "63a2297fb7964036e13b8f680795ab8cea2a8dcd7a0cff8d78c5676ff555e661",
+      "integratedSha256": "63a2297fb7964036e13b8f680795ab8cea2a8dcd7a0cff8d78c5676ff555e661"
+    },
+    {
+      "path": "electron/core/conversation.ts",
+      "sourceSha256": "9346496992b5df3aad8914c05092de557ace045a1966770baded5a9bea911bef",
+      "integratedSha256": "9346496992b5df3aad8914c05092de557ace045a1966770baded5a9bea911bef"
+    },
+    {
+      "path": "electron/core/db.ts",
+      "sourceSha256": "8978727cb761f8f07c059f4df229fb89a7d4a421fee66befe13f1c40db7589e0",
+      "integratedSha256": "8978727cb761f8f07c059f4df229fb89a7d4a421fee66befe13f1c40db7589e0"
+    },
+    {
+      "path": "electron/core/eventCompaction.ts",
+      "sourceSha256": "481eeb20bf7213e3e4694a72bc873ba04a1a601367cf8582723e8cb4987f17c1",
+      "integratedSha256": "481eeb20bf7213e3e4694a72bc873ba04a1a601367cf8582723e8cb4987f17c1"
+    },
+    {
+      "path": "electron/core/experiments.ts",
+      "sourceSha256": "26b8f0692515ba26181f0683be3358c3f743d3f42f0d78c4886e4d19b2e843d5",
+      "integratedSha256": "26b8f0692515ba26181f0683be3358c3f743d3f42f0d78c4886e4d19b2e843d5"
+    },
+    {
+      "path": "electron/core/factory.ts",
+      "sourceSha256": "45c8e626f2879fa85c24a28703588dc5b571ea733365b438a2851e7cf93bcc2e",
+      "integratedSha256": "45c8e626f2879fa85c24a28703588dc5b571ea733365b438a2851e7cf93bcc2e"
+    },
+    {
+      "path": "electron/core/intent.ts",
+      "sourceSha256": "e4ffa141d41df58139689f3a285fbb9767b39a52e017c57b9ed06e46ad1527a0",
+      "integratedSha256": "e4ffa141d41df58139689f3a285fbb9767b39a52e017c57b9ed06e46ad1527a0"
+    },
+    {
+      "path": "electron/core/invalidation.ts",
+      "sourceSha256": "708bb83a2df260d02e608d51df40f8b87c2dfe8cb6874c67b98c5ee7967a086c",
+      "integratedSha256": "708bb83a2df260d02e608d51df40f8b87c2dfe8cb6874c67b98c5ee7967a086c"
+    },
+    {
+      "path": "electron/core/notify.ts",
+      "sourceSha256": "0ea8dd0a97265b2eec38ef2ca06921655723b3303faa4902774e7a9643adfec4",
+      "integratedSha256": "0ea8dd0a97265b2eec38ef2ca06921655723b3303faa4902774e7a9643adfec4"
+    },
+    {
+      "path": "electron/core/performance.ts",
+      "sourceSha256": "e2baeefbf17fb80ab592d4bb7c2bb519b31ba9e59e702348739c069f65cbfa75",
+      "integratedSha256": "e2baeefbf17fb80ab592d4bb7c2bb519b31ba9e59e702348739c069f65cbfa75"
+    },
+    {
+      "path": "electron/core/platform.ts",
+      "sourceSha256": "d0e3a3766014f9ec267253ddc1448b59884c4b2a10a8055f811652a2eefeed35",
+      "integratedSha256": "d0e3a3766014f9ec267253ddc1448b59884c4b2a10a8055f811652a2eefeed35"
+    },
+    {
+      "path": "electron/core/readiness.ts",
+      "sourceSha256": "f281a08c31ecee4aa0484ee685fc36aa9d5d2e8e9a8fe1ad3ad26a51a4947787",
+      "integratedSha256": "f281a08c31ecee4aa0484ee685fc36aa9d5d2e8e9a8fe1ad3ad26a51a4947787"
+    },
+    {
+      "path": "electron/core/recovery.ts",
+      "sourceSha256": "ad295efa9c0e5403fb9fe625124b90f117c524c9126f72dc583a028a569dd423",
+      "integratedSha256": "ad295efa9c0e5403fb9fe625124b90f117c524c9126f72dc583a028a569dd423"
+    },
+    {
+      "path": "electron/core/secrets.ts",
+      "sourceSha256": "8e7e8ed628166d1bcc405d96bf01647f3b7b697a739ff65d7ba0eb7022934154",
+      "integratedSha256": "8e7e8ed628166d1bcc405d96bf01647f3b7b697a739ff65d7ba0eb7022934154"
+    },
+    {
+      "path": "electron/core/settings.ts",
+      "sourceSha256": "38068d5255cec6ce3409a26381d2ae0b5a27666d247a3581aa327deaa06db05d",
+      "integratedSha256": "38068d5255cec6ce3409a26381d2ae0b5a27666d247a3581aa327deaa06db05d"
+    },
+    {
+      "path": "electron/core/target.ts",
+      "sourceSha256": "c8f262eadb3b0564ce94a6afddba09a7ca80003b531bfedec3772d703e0fe569",
+      "integratedSha256": "c8f262eadb3b0564ce94a6afddba09a7ca80003b531bfedec3772d703e0fe569"
+    },
+    {
+      "path": "electron/core/toolchain.ts",
+      "sourceSha256": "aa416549e8dbcd3b4620401e7a95fcf01201e1c3948575da63914c088f323d44",
+      "integratedSha256": "aa416549e8dbcd3b4620401e7a95fcf01201e1c3948575da63914c088f323d44"
+    },
+    {
+      "path": "electron/core/util.ts",
+      "sourceSha256": "e0ba1bbd84b83e488774f8e2fbfa592fa27f6fb626b7a8f9725a05b235beedfd",
+      "integratedSha256": "e0ba1bbd84b83e488774f8e2fbfa592fa27f6fb626b7a8f9725a05b235beedfd"
+    },
+    {
+      "path": "electron/core/__tests__/platform-agnostic.test.ts",
+      "sourceSha256": "bf89ef9264d6bdfa8acd64d3604bb4c94cc07a896332c449d817729a3a72686b",
+      "integratedSha256": "bf89ef9264d6bdfa8acd64d3604bb4c94cc07a896332c449d817729a3a72686b"
+    },
+    {
+      "path": "electron/ipc.ts",
+      "sourceSha256": "0f0f34f435962680ada1688faf98e0ed52e6308d104cca5e836ff4c07cb0bb40",
+      "integratedSha256": "0f0f34f435962680ada1688faf98e0ed52e6308d104cca5e836ff4c07cb0bb40"
+    },
+    {
+      "path": "electron/main.ts",
+      "sourceSha256": "544d94813333c2b121fc902e3fec228a57d99cfb734d22316b22facf2febc442",
+      "integratedSha256": "544d94813333c2b121fc902e3fec228a57d99cfb734d22316b22facf2febc442"
+    },
+    {
+      "path": "electron/preload.ts",
+      "sourceSha256": "33b50bc682b4dbda3eca7024f74f68639745246ef9fa9108c8183b2725bbe2f9",
+      "integratedSha256": "33b50bc682b4dbda3eca7024f74f68639745246ef9fa9108c8183b2725bbe2f9"
+    },
+    {
+      "path": "electron/projects/projects.ts",
+      "sourceSha256": "11d99e4980dff0e92a5d2f43ffe6ad39f598810e3504bb2df1fb32dde469acb9",
+      "integratedSha256": "11d99e4980dff0e92a5d2f43ffe6ad39f598810e3504bb2df1fb32dde469acb9"
+    },
+    {
+      "path": "electron/providers/cloudflare.ts",
+      "sourceSha256": "99e80fa8929b08ae8a8de62385d865fb96088b60caf83d7d5ad4bfd6797cda61",
+      "integratedSha256": "99e80fa8929b08ae8a8de62385d865fb96088b60caf83d7d5ad4bfd6797cda61"
+    },
+    {
+      "path": "electron/providers/connection.ts",
+      "sourceSha256": "570efcee85b2c1d17cb40fb1d0179abb305760c2848f594e97a857b57af33a54",
+      "integratedSha256": "570efcee85b2c1d17cb40fb1d0179abb305760c2848f594e97a857b57af33a54"
+    },
+    {
+      "path": "electron/providers/google.ts",
+      "sourceSha256": "73dc00e888bd2d26e1f4de70db2d5f3c12541177b4c4f7f1182c9d55d068ebbc",
+      "integratedSha256": "73dc00e888bd2d26e1f4de70db2d5f3c12541177b4c4f7f1182c9d55d068ebbc"
+    },
+    {
+      "path": "electron/providers/heuristics.ts",
+      "sourceSha256": "ef846f70281a8af701803a9cb7d2d14a10b6427b66fda4c4f13a801636cecb19",
+      "integratedSha256": "ef846f70281a8af701803a9cb7d2d14a10b6427b66fda4c4f13a801636cecb19"
+    },
+    {
+      "path": "electron/providers/http.ts",
+      "sourceSha256": "b3d1f6ebd278e802e305249752ab2d0133021a6ea7231558b1f0cf47e1f40a30",
+      "integratedSha256": "b3d1f6ebd278e802e305249752ab2d0133021a6ea7231558b1f0cf47e1f40a30"
+    },
+    {
+      "path": "electron/providers/managed.ts",
+      "sourceSha256": "8ec1462229bcd1a8cf607dd8d44c3241a7c0c7199c9d54a05c348ec05df0268a",
+      "integratedSha256": "8ec1462229bcd1a8cf607dd8d44c3241a7c0c7199c9d54a05c348ec05df0268a"
+    },
+    {
+      "path": "electron/providers/ollama.ts",
+      "sourceSha256": "e80e5f8c41a40305341a7db53ba33ca2b25db069370bbd0c821e1b91b1842a64",
+      "integratedSha256": "e80e5f8c41a40305341a7db53ba33ca2b25db069370bbd0c821e1b91b1842a64"
+    },
+    {
+      "path": "electron/providers/openaiCompatible.ts",
+      "sourceSha256": "752f3a1faad48d711c53ffad1911c80303530a354ee1a773c4a29e1b27d208b8",
+      "integratedSha256": "752f3a1faad48d711c53ffad1911c80303530a354ee1a773c4a29e1b27d208b8"
+    },
+    {
+      "path": "electron/providers/openrouter.ts",
+      "sourceSha256": "18c01af4ec96c533cb7dffa380724c68c6d5c5a78bca25f74d7a9b0de8be6412",
+      "integratedSha256": "18c01af4ec96c533cb7dffa380724c68c6d5c5a78bca25f74d7a9b0de8be6412"
+    },
+    {
+      "path": "electron/providers/registry.ts",
+      "sourceSha256": "ba00cd715b5b64b8b840aa26e1e4cf4359583873484296a4634ecd82a16d3d31",
+      "integratedSha256": "ba00cd715b5b64b8b840aa26e1e4cf4359583873484296a4634ecd82a16d3d31"
+    },
+    {
+      "path": "electron/providers/types.ts",
+      "sourceSha256": "77b0b4ca28813857a264c3f5377c5c42aed3258699366842f0a6978d249873c5",
+      "integratedSha256": "77b0b4ca28813857a264c3f5377c5c42aed3258699366842f0a6978d249873c5"
+    },
+    {
+      "path": "electron/remote/auth.ts",
+      "sourceSha256": "2a9a4ceeaaaccedf5325d834c74134cfe9518e9977e5949df99c3dd7070f7848",
+      "integratedSha256": "2a9a4ceeaaaccedf5325d834c74134cfe9518e9977e5949df99c3dd7070f7848"
+    },
+    {
+      "path": "electron/remote/cert.ts",
+      "sourceSha256": "8cbb0d121483a40f6b19aa6d6b80a6068304ea451764f9f5ff79425e7fc32c00",
+      "integratedSha256": "8cbb0d121483a40f6b19aa6d6b80a6068304ea451764f9f5ff79425e7fc32c00"
+    },
+    {
+      "path": "electron/remote/connectivity/firewall.ts",
+      "sourceSha256": "24f50dc628ea5cf41a2b74c4039b21f3438ff255c25d1701208fad58beddb1dc",
+      "integratedSha256": "24f50dc628ea5cf41a2b74c4039b21f3438ff255c25d1701208fad58beddb1dc"
+    },
+    {
+      "path": "electron/remote/connectivity/index.ts",
+      "sourceSha256": "25b385e040e9ce3e251ae6cba4c49bfce1bc101366372f389618e608062e3dd2",
+      "integratedSha256": "25b385e040e9ce3e251ae6cba4c49bfce1bc101366372f389618e608062e3dd2"
+    },
+    {
+      "path": "electron/remote/connectivity/ipv6.ts",
+      "sourceSha256": "816fc9b33fdf0d0d59aefd12d98e7b266df92d64c70f2982391887ffb27b490b",
+      "integratedSha256": "816fc9b33fdf0d0d59aefd12d98e7b266df92d64c70f2982391887ffb27b490b"
+    },
+    {
+      "path": "electron/remote/connectivity/natpmp.ts",
+      "sourceSha256": "7c8442e9364e6682bd296aca34541f02508ed162d0d8a0ad715d57909f2513b3",
+      "integratedSha256": "7c8442e9364e6682bd296aca34541f02508ed162d0d8a0ad715d57909f2513b3"
+    },
+    {
+      "path": "electron/remote/connectivity/reachability.ts",
+      "sourceSha256": "4c4430b13aeb6de0ef32082696c8c355f68aa5128c8a5874f71bd5ec81b05b1a",
+      "integratedSha256": "4c4430b13aeb6de0ef32082696c8c355f68aa5128c8a5874f71bd5ec81b05b1a"
+    },
+    {
+      "path": "electron/remote/connectivity/stun.ts",
+      "sourceSha256": "52a34a74914e7a93d802ac3dba6ea04c379b6e66957437873bab6a058db0cc03",
+      "integratedSha256": "52a34a74914e7a93d802ac3dba6ea04c379b6e66957437873bab6a058db0cc03"
+    },
+    {
+      "path": "electron/remote/connectivity/upnp.ts",
+      "sourceSha256": "193c8ba151efd5e79283d8f934acf784d2e19d6ebb85ac201e40a812f2b77425",
+      "integratedSha256": "193c8ba151efd5e79283d8f934acf784d2e19d6ebb85ac201e40a812f2b77425"
+    },
+    {
+      "path": "electron/remote/connectivity/wan.ts",
+      "sourceSha256": "165433c25d4494211ed5b74f171ea1c3a7255f3003580067cabeb0e4dd64a6f5",
+      "integratedSha256": "165433c25d4494211ed5b74f171ea1c3a7255f3003580067cabeb0e4dd64a6f5"
+    },
+    {
+      "path": "electron/remote/connectivity-shim.d.ts",
+      "sourceSha256": "a3c95719c9be85d24cd9c1fe1e1890870c6056e94121c4aa6a6ef3ccd2525db2",
+      "integratedSha256": "a3c95719c9be85d24cd9c1fe1e1890870c6056e94121c4aa6a6ef3ccd2525db2"
+    },
+    {
+      "path": "electron/remote/connectivityHook.ts",
+      "sourceSha256": "1652a8722825d88c7bfee13fe66c371717d71b017942ac4a7adc769e64775a36",
+      "integratedSha256": "1652a8722825d88c7bfee13fe66c371717d71b017942ac4a7adc769e64775a36"
+    },
+    {
+      "path": "electron/remote/desktop.ts",
+      "sourceSha256": "da738ca086732e185788cc08d8e944f5037c0fb53645e18e2a484eacd46fff8b",
+      "integratedSha256": "da738ca086732e185788cc08d8e944f5037c0fb53645e18e2a484eacd46fff8b"
+    },
+    {
+      "path": "electron/remote/devices.ts",
+      "sourceSha256": "b25de9fcc93cf9e226a42b1d364126ac1d1c9f5b83efd57dc908676202265d64",
+      "integratedSha256": "b25de9fcc93cf9e226a42b1d364126ac1d1c9f5b83efd57dc908676202265d64"
+    },
+    {
+      "path": "electron/remote/diagnosticHost.ts",
+      "sourceSha256": "befaafc7983f32821e51cbc851307730a400e85de349b793b2fa7d016a8a3e93",
+      "integratedSha256": "befaafc7983f32821e51cbc851307730a400e85de349b793b2fa7d016a8a3e93"
+    },
+    {
+      "path": "electron/remote/frame.ts",
+      "sourceSha256": "7ba551408e2c3a6bb71ea85163ba55fc6fe335fe9683e0a02856e3bf23307ebb",
+      "integratedSha256": "7ba551408e2c3a6bb71ea85163ba55fc6fe335fe9683e0a02856e3bf23307ebb"
+    },
+    {
+      "path": "electron/remote/gateway.ts",
+      "sourceSha256": "76d99831a058ef6c8d31abd4184565c6bb894f19fef0427605c0de9613928990",
+      "integratedSha256": "76d99831a058ef6c8d31abd4184565c6bb894f19fef0427605c0de9613928990"
+    },
+    {
+      "path": "electron/remote/index.ts",
+      "sourceSha256": "e60e252ac149108f0b4f51d2cbd4d3e395098d789b73c4473b5b0907cc86c62b",
+      "integratedSha256": "e60e252ac149108f0b4f51d2cbd4d3e395098d789b73c4473b5b0907cc86c62b"
+    },
+    {
+      "path": "electron/remote/pairing.ts",
+      "sourceSha256": "fd382824a7febf93aeaf584f6288504b1c5d0bd38df585973b10141e521633f4",
+      "integratedSha256": "fd382824a7febf93aeaf584f6288504b1c5d0bd38df585973b10141e521633f4"
+    },
+    {
+      "path": "electron/remote/protocol.ts",
+      "sourceSha256": "47cb65bf384fba56a2834bcd8662342acf14db2a2e52b94bface48ca55fff553",
+      "integratedSha256": "47cb65bf384fba56a2834bcd8662342acf14db2a2e52b94bface48ca55fff553"
+    },
+    {
+      "path": "electron/remote/routes.ts",
+      "sourceSha256": "a5339f373326dcf45cf979a304fe39f14df9121530bf1a54d9597e497418eb08",
+      "integratedSha256": "a5339f373326dcf45cf979a304fe39f14df9121530bf1a54d9597e497418eb08"
+    },
+    {
+      "path": "electron/remote/selfTest.ts",
+      "sourceSha256": "d8173fb3b149c0eaae0298854068da3316bf95cb98199b9ab61b83904ffc5590",
+      "integratedSha256": "d8173fb3b149c0eaae0298854068da3316bf95cb98199b9ab61b83904ffc5590"
+    },
+    {
+      "path": "electron/remote/server.ts",
+      "sourceSha256": "decfa1bd58d337bb77d78a4092aaef36545c4fe4f969b50eebf669bcc75f90de",
+      "integratedSha256": "decfa1bd58d337bb77d78a4092aaef36545c4fe4f969b50eebf669bcc75f90de"
+    },
+    {
+      "path": "electron/remote/state.ts",
+      "sourceSha256": "df01b7973e645b7abea793b45ef1c77b2d0a906177ba11824f84ef33c3f44145",
+      "integratedSha256": "df01b7973e645b7abea793b45ef1c77b2d0a906177ba11824f84ef33c3f44145"
+    },
+    {
+      "path": "electron/research/extract.ts",
+      "sourceSha256": "5ddc7b185f840ecf4a17c4245ce9882f401826dc8ecf7deaf43e862b547ebf13",
+      "integratedSha256": "5ddc7b185f840ecf4a17c4245ce9882f401826dc8ecf7deaf43e862b547ebf13"
+    },
+    {
+      "path": "electron/research/robots.ts",
+      "sourceSha256": "025d874e59ea9a1783915c202f61e8b37c9a2700b9e364cf5ebcb6826c8215d7",
+      "integratedSha256": "025d874e59ea9a1783915c202f61e8b37c9a2700b9e364cf5ebcb6826c8215d7"
+    },
+    {
+      "path": "electron/research/search.ts",
+      "sourceSha256": "c9c59098b89d4568b2e91efe51726d9cd7bfc9a6b797c5f71b1bac88467fc2df",
+      "integratedSha256": "c9c59098b89d4568b2e91efe51726d9cd7bfc9a6b797c5f71b1bac88467fc2df"
+    },
+    {
+      "path": "electron/router/router.ts",
+      "sourceSha256": "ddd7e9234b786d73b67f4520e078c44f95f69e5f243189b2df1a5ebc5397b40b",
+      "integratedSha256": "ddd7e9234b786d73b67f4520e078c44f95f69e5f243189b2df1a5ebc5397b40b"
+    },
+    {
+      "path": "electron/runtime/android.ts",
+      "sourceSha256": "9b103a2d194762da443c3957e8cb309a886a3710145d2aaeb0a97326187752f2",
+      "integratedSha256": "9b103a2d194762da443c3957e8cb309a886a3710145d2aaeb0a97326187752f2"
+    },
+    {
+      "path": "electron/runtime/api.ts",
+      "sourceSha256": "0e0a4d790829a71da3e3c41883cde2e77503742623c000775d5038dc00704abe",
+      "integratedSha256": "0e0a4d790829a71da3e3c41883cde2e77503742623c000775d5038dc00704abe"
+    },
+    {
+      "path": "electron/runtime/cli.ts",
+      "sourceSha256": "1d18b7f9d453836e1ff7d22769de595102fd96b82e8a624e4ec9b7d08ce3b835",
+      "integratedSha256": "1d18b7f9d453836e1ff7d22769de595102fd96b82e8a624e4ec9b7d08ce3b835"
+    },
+    {
+      "path": "electron/runtime/desktop.ts",
+      "sourceSha256": "8c5ebfd0758082ec7b5eb9c377cbd2a111d731f3ce3bc9ceaad2a4282574bbc5",
+      "integratedSha256": "8c5ebfd0758082ec7b5eb9c377cbd2a111d731f3ce3bc9ceaad2a4282574bbc5"
+    },
+    {
+      "path": "electron/runtime/library.ts",
+      "sourceSha256": "2bc43be8fea124b42055abb499ed232fb46c0bc8aa8dcb756a7edb3062aac363",
+      "integratedSha256": "2bc43be8fea124b42055abb499ed232fb46c0bc8aa8dcb756a7edb3062aac363"
+    },
+    {
+      "path": "electron/runtime/manager.ts",
+      "sourceSha256": "a835b63f3df76df1da25adaae1cbf35ba8c83522ee3b91e0fed7004e664bb7c3",
+      "integratedSha256": "a835b63f3df76df1da25adaae1cbf35ba8c83522ee3b91e0fed7004e664bb7c3"
+    },
+    {
+      "path": "electron/runtime/paths.ts",
+      "sourceSha256": "61798bb6d83e2f0265a0c0a2d02da5327579b8537ef1c6f94eba00ac8db8b913",
+      "integratedSha256": "61798bb6d83e2f0265a0c0a2d02da5327579b8537ef1c6f94eba00ac8db8b913"
+    },
+    {
+      "path": "electron/runtime/preview.ts",
+      "sourceSha256": "3981a1dbf0b37b6739abaf7247acfec7fc42ecf6e8a19ef5aea298a69745304a",
+      "integratedSha256": "3981a1dbf0b37b6739abaf7247acfec7fc42ecf6e8a19ef5aea298a69745304a"
+    },
+    {
+      "path": "electron/runtime/types.ts",
+      "sourceSha256": "729530aa4bfbcfa9e43c4cec9ee8a2d5b46954aaf59e0a3f6c6f36524a4ff0f7",
+      "integratedSha256": "729530aa4bfbcfa9e43c4cec9ee8a2d5b46954aaf59e0a3f6c6f36524a4ff0f7"
+    },
+    {
+      "path": "electron/runtime/unavailable.ts",
+      "sourceSha256": "e4396ee22b9f76a1bf33b7a4a3293c60aff15d6b5dee136da059bc5e084beea8",
+      "integratedSha256": "e4396ee22b9f76a1bf33b7a4a3293c60aff15d6b5dee136da059bc5e084beea8"
+    },
+    {
+      "path": "electron/runtime/web.ts",
+      "sourceSha256": "4d997c01c8799f4c5c89775971179a8d2247ec5bbbc281aa912ad4c46a2efe30",
+      "integratedSha256": "4d997c01c8799f4c5c89775971179a8d2247ec5bbbc281aa912ad4c46a2efe30"
+    },
+    {
+      "path": "electron/runtime/windows.ts",
+      "sourceSha256": "cd33a1adec1eb41a463e1647108839805c0d386cdca9c0f43448f441c95c4b68",
+      "integratedSha256": "cd33a1adec1eb41a463e1647108839805c0d386cdca9c0f43448f441c95c4b68"
+    },
+    {
+      "path": "electron/tools/approvals.ts",
+      "sourceSha256": "2236fc6d192657d901fc95ccffa7c3f7554012c84b0ee0d7691cdedd841cb964",
+      "integratedSha256": "2236fc6d192657d901fc95ccffa7c3f7554012c84b0ee0d7691cdedd841cb964"
+    },
+    {
+      "path": "electron/tools/fs.ts",
+      "sourceSha256": "cfea2655fbfac07f1304b31888fc1c02231d43a0348614abafbd3d1be5272863",
+      "integratedSha256": "cfea2655fbfac07f1304b31888fc1c02231d43a0348614abafbd3d1be5272863"
+    },
+    {
+      "path": "electron/tools/policy.ts",
+      "sourceSha256": "91c9e9d31365b1d106f3707cf9e33553524c8361bdba5e01ca340df568152cdf",
+      "integratedSha256": "91c9e9d31365b1d106f3707cf9e33553524c8361bdba5e01ca340df568152cdf"
+    },
+    {
+      "path": "electron/tools/process.ts",
+      "sourceSha256": "d5483007142d7205409f08e103b9874b9af9716ffcf21ccb378ea3bbaf2f61a5",
+      "integratedSha256": "d5483007142d7205409f08e103b9874b9af9716ffcf21ccb378ea3bbaf2f61a5"
+    },
+    {
+      "path": "electron/tools/search.ts",
+      "sourceSha256": "9156a3b20f89efcdd3d468f1c75c2b958e44338e449bf18d0d88e06804d62f6e",
+      "integratedSha256": "9156a3b20f89efcdd3d468f1c75c2b958e44338e449bf18d0d88e06804d62f6e"
+    },
+    {
+      "path": "electron/tools/staticServer.ts",
+      "sourceSha256": "8e564d8bf3fca18b7387c640101f664a4f386f4a886d8199badd33a325d8543b",
+      "integratedSha256": "8e564d8bf3fca18b7387c640101f664a4f386f4a886d8199badd33a325d8543b"
+    },
+    {
+      "path": "electron/workspace/service.ts",
+      "sourceSha256": "14ca83124af07b8c6510836eadd1edaf0f3506bc18928ce73d538a8ed26b5bad",
+      "integratedSha256": "14ca83124af07b8c6510836eadd1edaf0f3506bc18928ce73d538a8ed26b5bad"
+    },
+    {
+      "path": "package-lock.json",
+      "sourceSha256": "e36207115e521c3072c4cc4abd8445641f2afaa58c8a38578803315af3fa1bda",
+      "integratedSha256": "e36207115e521c3072c4cc4abd8445641f2afaa58c8a38578803315af3fa1bda"
+    },
+    {
+      "path": "package.json",
+      "sourceSha256": "39e81fc242d749852cbf1f2fcbe19f6f14cb4092a3d21040de4b8561551fd76a",
+      "integratedSha256": "39e81fc242d749852cbf1f2fcbe19f6f14cb4092a3d21040de4b8561551fd76a"
+    },
+    {
+      "path": "README.md",
+      "sourceSha256": "d1b82dfe9c220d3850724a3d42c3b6f496c3c63df6036b37f61eec99ee4adfea",
+      "integratedSha256": "d1b82dfe9c220d3850724a3d42c3b6f496c3c63df6036b37f61eec99ee4adfea"
+    },
+    {
+      "path": "resources/icon.ico",
+      "sourceSha256": "554edb776c60aeb1005176660a543fb859b37ff9c53c230148eda01e16a100cb",
+      "integratedSha256": "554edb776c60aeb1005176660a543fb859b37ff9c53c230148eda01e16a100cb"
+    },
+    {
+      "path": "resources/icon.png",
+      "sourceSha256": "f78395a83c63328552003dc7196f5c49c07d9d304ae054cdb980542c921b2bd8",
+      "integratedSha256": "f78395a83c63328552003dc7196f5c49c07d9d304ae054cdb980542c921b2bd8"
+    },
+    {
+      "path": "resources/logo-full.png",
+      "sourceSha256": "b042334dce18edee10cd4602d51bba25b76cea338b95df12c6c1f17825a8bea3",
+      "integratedSha256": "b042334dce18edee10cd4602d51bba25b76cea338b95df12c6c1f17825a8bea3"
+    },
+    {
+      "path": "resources/logo-mark-256.png",
+      "sourceSha256": "734f7206a2ffd45a2c787085dc0b6d35fcaf615f41af5d31e6e732a976787de7",
+      "integratedSha256": "734f7206a2ffd45a2c787085dc0b6d35fcaf615f41af5d31e6e732a976787de7"
+    },
+    {
+      "path": "resources/logo-mark.png",
+      "sourceSha256": "bf451947903670627a53a4488bf4b545bf3bbcc2571588df38dec06a0dad6517",
+      "integratedSha256": "bf451947903670627a53a4488bf4b545bf3bbcc2571588df38dec06a0dad6517"
+    },
+    {
+      "path": "resources/logo-wordmark.png",
+      "sourceSha256": "f1297233430a618c349f3db101d9cf6d18c4a78e6e0423cc78d663a0d109430e",
+      "integratedSha256": "f1297233430a618c349f3db101d9cf6d18c4a78e6e0423cc78d663a0d109430e"
+    },
+    {
+      "path": "scripts/build-control-room-qa.mjs",
+      "sourceSha256": "95de0ba2f6a5a59e946abc3dfce2e497f99ca68176f314bd5f6a25cfe89562b4",
+      "integratedSha256": "95de0ba2f6a5a59e946abc3dfce2e497f99ca68176f314bd5f6a25cfe89562b4"
+    },
+    {
+      "path": "scripts/build-main.mjs",
+      "sourceSha256": "6cf82a584ee313f992b159ed4dfa341943821e4368b85f162ffe6f7ac2382a64",
+      "integratedSha256": "6cf82a584ee313f992b159ed4dfa341943821e4368b85f162ffe6f7ac2382a64"
+    },
+    {
+      "path": "scripts/connectivity-probe.mjs",
+      "sourceSha256": "2f518a6e47ec60bd60832e1ee36cd0edc5d1acf1b23222344cb3a095ab94fc53",
+      "integratedSha256": "2f518a6e47ec60bd60832e1ee36cd0edc5d1acf1b23222344cb3a095ab94fc53"
+    },
+    {
+      "path": "scripts/e2e-modes-live.mjs",
+      "sourceSha256": "badc8ecc28b0e4b7ae6093eed455504973563fd771537dbb019ce4d79e7a0169",
+      "integratedSha256": "badc8ecc28b0e4b7ae6093eed455504973563fd771537dbb019ce4d79e7a0169"
+    },
+    {
+      "path": "scripts/e2e-modes-ui.mjs",
+      "sourceSha256": "a478b818a4dc051862e3f782f2ec0f80f431272f821d2cb26e9bc241281cede7",
+      "integratedSha256": "a478b818a4dc051862e3f782f2ec0f80f431272f821d2cb26e9bc241281cede7"
+    },
+    {
+      "path": "scripts/e2e-run.mjs",
+      "sourceSha256": "f648cfc1e82b5f6df082b0747dd2f9b3e9870da3f8aa6be1e851368ec8a3f918",
+      "integratedSha256": "f648cfc1e82b5f6df082b0747dd2f9b3e9870da3f8aa6be1e851368ec8a3f918"
+    },
+    {
+      "path": "scripts/factory-run-qa.mjs",
+      "sourceSha256": "68703c9d4b863c1432e93445597cb20abe3dfa28d18864f09e49f30390ae321d",
+      "integratedSha256": "68703c9d4b863c1432e93445597cb20abe3dfa28d18864f09e49f30390ae321d"
+    },
+    {
+      "path": "scripts/factory-ui-qa.mjs",
+      "sourceSha256": "7c8a29914a5c7f5f7b13a67d433986e53e3221639da5ab179eebe93bdf52234d",
+      "integratedSha256": "7c8a29914a5c7f5f7b13a67d433986e53e3221639da5ab179eebe93bdf52234d"
+    },
+    {
+      "path": "scripts/inspect-db.mjs",
+      "sourceSha256": "f2d142571bcc904921bbee21cddbaf1a3c1b728e354fa72b1dc756fb5993c1b1",
+      "integratedSha256": "f2d142571bcc904921bbee21cddbaf1a3c1b728e354fa72b1dc756fb5993c1b1"
+    },
+    {
+      "path": "scripts/motion-qa.mjs",
+      "sourceSha256": "10aab2dd2ec6614a815991f34e634d9d6d39a09dcf3a9a9f57beb87f5a939266",
+      "integratedSha256": "10aab2dd2ec6614a815991f34e634d9d6d39a09dcf3a9a9f57beb87f5a939266"
+    },
+    {
+      "path": "scripts/overhaul-live-qa.mjs",
+      "sourceSha256": "0aa667e3da52eacdf65f4686a80ff225215321c123e09fb7c66a96fc48b10ff5",
+      "integratedSha256": "0aa667e3da52eacdf65f4686a80ff225215321c123e09fb7c66a96fc48b10ff5"
+    },
+    {
+      "path": "scripts/overhaul-preview-qa.mjs",
+      "sourceSha256": "514feba11c4996c65af62082999fa81ac73264be714da4b6e1d6b729533b349d",
+      "integratedSha256": "514feba11c4996c65af62082999fa81ac73264be714da4b6e1d6b729533b349d"
+    },
+    {
+      "path": "scripts/perf/electron-stub.ts",
+      "sourceSha256": "394057775417f2757f2093fd636bb282656e8fe32fe91a5593d23bf065179e79",
+      "integratedSha256": "394057775417f2757f2093fd636bb282656e8fe32fe91a5593d23bf065179e79"
+    },
+    {
+      "path": "scripts/perf/main-bench.ts",
+      "sourceSha256": "db653253b38ae9dbdcb9585772557f25f2fa8cec03a1be3f14ad53cb7707d4ff",
+      "integratedSha256": "db653253b38ae9dbdcb9585772557f25f2fa8cec03a1be3f14ad53cb7707d4ff"
+    },
+    {
+      "path": "scripts/perf/renderer-bench.mjs",
+      "sourceSha256": "fa5444348154d5c7ffbd871b7debf01e99c1cdfe06f9b277f657dfab8b1f38ad",
+      "integratedSha256": "fa5444348154d5c7ffbd871b7debf01e99c1cdfe06f9b277f657dfab8b1f38ad"
+    },
+    {
+      "path": "scripts/perf/search-stub.ts",
+      "sourceSha256": "5cda41f8146cb80bdccdca637645b929c47bb892dbbb55b2a53cdc8b14bd2d06",
+      "integratedSha256": "5cda41f8146cb80bdccdca637645b929c47bb892dbbb55b2a53cdc8b14bd2d06"
+    },
+    {
+      "path": "scripts/perf-bench.mjs",
+      "sourceSha256": "e167578004d5ea138071ec8157a9c8eaebcc1f07083ed2bd0df46e537d7020e6",
+      "integratedSha256": "e167578004d5ea138071ec8157a9c8eaebcc1f07083ed2bd0df46e537d7020e6"
+    },
+    {
+      "path": "scripts/probe-search.mjs",
+      "sourceSha256": "6ce3628cfe3f7060998bcbade41c52a2b1726e3df0722441043b3cdb90d6e86f",
+      "integratedSha256": "6ce3628cfe3f7060998bcbade41c52a2b1726e3df0722441043b3cdb90d6e86f"
+    },
+    {
+      "path": "scripts/probe.cjs",
+      "sourceSha256": "b24edcd159a1ba5a585cd3a9e2715adc86722cda30d26a1c9516e62594bdd75d",
+      "integratedSha256": "b24edcd159a1ba5a585cd3a9e2715adc86722cda30d26a1c9516e62594bdd75d"
+    },
+    {
+      "path": "scripts/process-logo.mjs",
+      "sourceSha256": "4378918db65fe51f80f08979b6f698a842ba84cb12ba92f6400e694ce3ed3998",
+      "integratedSha256": "4378918db65fe51f80f08979b6f698a842ba84cb12ba92f6400e694ce3ed3998"
+    },
+    {
+      "path": "scripts/publish-native-downloads.mjs",
+      "sourceSha256": "0d364c6712d38b2d06d72fd19bbdc64cf307d20ce55344fabbfc18ff20795714",
+      "integratedSha256": "0d364c6712d38b2d06d72fd19bbdc64cf307d20ce55344fabbfc18ff20795714"
+    },
+    {
+      "path": "scripts/qa-shots.mjs",
+      "sourceSha256": "ec4240a35364c9d0b31c701b1bdd153ad578fe721f8d16c57388448f01250b95",
+      "integratedSha256": "ec4240a35364c9d0b31c701b1bdd153ad578fe721f8d16c57388448f01250b95"
+    },
+    {
+      "path": "scripts/redesign-edit.cjs",
+      "sourceSha256": "80bd56247625d0eabeb45a40313abc0dde6bfc1d52802eadba639e838c84d727",
+      "integratedSha256": "80bd56247625d0eabeb45a40313abc0dde6bfc1d52802eadba639e838c84d727"
+    },
+    {
+      "path": "scripts/redesign-graph.cjs",
+      "sourceSha256": "062467581443b8ed0a84efa4eaa5d6d621adb2010a180362c27aa86a97e368cd",
+      "integratedSha256": "062467581443b8ed0a84efa4eaa5d6d621adb2010a180362c27aa86a97e368cd"
+    },
+    {
+      "path": "scripts/redesign-ui.cjs",
+      "sourceSha256": "62e14c41120298c6a1384b64629f85b6e14fcdf8e3bb589fe81b579cdb617e94",
+      "integratedSha256": "62e14c41120298c6a1384b64629f85b6e14fcdf8e3bb589fe81b579cdb617e94"
+    },
+    {
+      "path": "scripts/release-manifest.mjs",
+      "sourceSha256": "9b48be2d19929ad2b64ea77e973421c06b7d6e38de743ba085f4cc2ccd83383d",
+      "integratedSha256": "9b48be2d19929ad2b64ea77e973421c06b7d6e38de743ba085f4cc2ccd83383d"
+    },
+    {
+      "path": "scripts/release-startup-qa.mjs",
+      "sourceSha256": "c896a50e46c26a527e70b287f12c364d1050154c995ce1ff75313607f188e689",
+      "integratedSha256": "c896a50e46c26a527e70b287f12c364d1050154c995ce1ff75313607f188e689"
+    },
+    {
+      "path": "scripts/remote-ingress-probe.entry.ts",
+      "sourceSha256": "25ff8c41941f632a8128ce601d45d007c7b87a6cfaf0f2d4c07f89fdabf9f561",
+      "integratedSha256": "25ff8c41941f632a8128ce601d45d007c7b87a6cfaf0f2d4c07f89fdabf9f561"
+    },
+    {
+      "path": "scripts/remote-ingress-probe.mjs",
+      "sourceSha256": "403a027e5f52f76f515f59e63082ee35ed3e57fc567c66bb5bb32e0d8eaa69db",
+      "integratedSha256": "403a027e5f52f76f515f59e63082ee35ed3e57fc567c66bb5bb32e0d8eaa69db"
+    },
+    {
+      "path": "scripts/remote-mobile-qa.mjs",
+      "sourceSha256": "0b3b2b433cd5fa464476d0997ad00b1a87a9ae40cc69ba58e79aa770d69cda5b",
+      "integratedSha256": "0b3b2b433cd5fa464476d0997ad00b1a87a9ae40cc69ba58e79aa770d69cda5b"
+    },
+    {
+      "path": "scripts/remote-smoke.entry.ts",
+      "sourceSha256": "0b31f7378799dc0369be6f604b84549f1666d7dccb0e9547dd6eefe51f3afc65",
+      "integratedSha256": "0b31f7378799dc0369be6f604b84549f1666d7dccb0e9547dd6eefe51f3afc65"
+    },
+    {
+      "path": "scripts/remote-smoke.mjs",
+      "sourceSha256": "3964e029abda86b84452ec0f79b5ff8321c5667689fc1afff17165d3a0c17c2b",
+      "integratedSha256": "3964e029abda86b84452ec0f79b5ff8321c5667689fc1afff17165d3a0c17c2b"
+    },
+    {
+      "path": "scripts/verify-artifact-secrets.mjs",
+      "sourceSha256": "d597d6f8c09879706a89176c8bcbdf2eb1ca424852e758d08a79d83fddc8cae6",
+      "integratedSha256": "d597d6f8c09879706a89176c8bcbdf2eb1ca424852e758d08a79d83fddc8cae6"
+    },
+    {
+      "path": "scripts/web-byok-qa.mjs",
+      "sourceSha256": "977bf3d61012e9d8e39e4162c9a829b04ac95f40b97671d529a6db3cca47c325",
+      "integratedSha256": "977bf3d61012e9d8e39e4162c9a829b04ac95f40b97671d529a6db3cca47c325"
+    },
+    {
+      "path": "scripts/workspace-qa.mjs",
+      "sourceSha256": "358f4c6bcaba5297ff6be290d373b01fe4c5afc86e69e9ff433a2353cc695a76",
+      "integratedSha256": "358f4c6bcaba5297ff6be290d373b01fe4c5afc86e69e9ff433a2353cc695a76"
+    },
+    {
+      "path": "shared/chat.ts",
+      "sourceSha256": "141650d4e6b6033fbeb1184c512e1ff6d0a9090ac12f715a325e512376b68f1d",
+      "integratedSha256": "141650d4e6b6033fbeb1184c512e1ff6d0a9090ac12f715a325e512376b68f1d"
+    },
+    {
+      "path": "shared/model-profiles.ts",
+      "sourceSha256": "564bcf7908b6327a13db46d5dd910fe91155ee7d1378e354e0b65d114c7e190c",
+      "integratedSha256": "564bcf7908b6327a13db46d5dd910fe91155ee7d1378e354e0b65d114c7e190c"
+    },
+    {
+      "path": "shared/model-score.ts",
+      "sourceSha256": "6c4b15310e314c6007db91ef8433a1bb347fa78360c1b9cdcb57c3baa5a34daf",
+      "integratedSha256": "6c4b15310e314c6007db91ef8433a1bb347fa78360c1b9cdcb57c3baa5a34daf"
+    },
+    {
+      "path": "shared/preferences.ts",
+      "sourceSha256": "8d2c4fd3c553c56731cf5242ea3e566081474e1714c0ffaff833f60d000234c5",
+      "integratedSha256": "8d2c4fd3c553c56731cf5242ea3e566081474e1714c0ffaff833f60d000234c5"
+    },
+    {
+      "path": "shared/providers-catalog.ts",
+      "sourceSha256": "09242e296ee6baa263f06c87ad298312c20202c895937cf4f96659011824e60e",
+      "integratedSha256": "09242e296ee6baa263f06c87ad298312c20202c895937cf4f96659011824e60e"
+    },
+    {
+      "path": "shared/settings.ts",
+      "sourceSha256": "e789f5578c0414f2ea95e091455f930ea5432e678b1edbe2af467cfba21083ae",
+      "integratedSha256": "e789f5578c0414f2ea95e091455f930ea5432e678b1edbe2af467cfba21083ae"
+    },
+    {
+      "path": "shared/types.ts",
+      "sourceSha256": "346633da85d457ae7963ed456b29c34e8780bb88663d2126a5d0a56491b908ab",
+      "integratedSha256": "346633da85d457ae7963ed456b29c34e8780bb88663d2126a5d0a56491b908ab"
+    },
+    {
+      "path": "shared/unified-router.ts",
+      "sourceSha256": "6be30cf7815d35751e3e0fef8072479a0be202b781a96279ffdc20c1cdbd572b",
+      "integratedSha256": "6be30cf7815d35751e3e0fef8072479a0be202b781a96279ffdc20c1cdbd572b"
+    },
+    {
+      "path": "shared/workspace.ts",
+      "sourceSha256": "012abb18fd64156088f25d9575bd5c17f6c4c7d2753c4f7e1b2d3d7bcd931308",
+      "integratedSha256": "012abb18fd64156088f25d9575bd5c17f6c4c7d2753c4f7e1b2d3d7bcd931308"
+    },
+    {
+      "path": "tests/byok-desktop.test.ts",
+      "sourceSha256": "238d86d7aff27f0d531e70e4d277e1f69018dc2dad05caca1aa3fc1294eca81b",
+      "integratedSha256": "238d86d7aff27f0d531e70e4d277e1f69018dc2dad05caca1aa3fc1294eca81b"
+    },
+    {
+      "path": "tests/chat.test.ts",
+      "sourceSha256": "82edc1c9cb2782755231c41b06645118581a080567603bae9082c8f8acbbb8d4",
+      "integratedSha256": "82edc1c9cb2782755231c41b06645118581a080567603bae9082c8f8acbbb8d4"
+    },
+    {
+      "path": "tests/checkpoint.test.ts",
+      "sourceSha256": "34938c42c3914b2364b20712414fbabccd5f9ac2dc6935e9a2262ac44882c7e9",
+      "integratedSha256": "34938c42c3914b2364b20712414fbabccd5f9ac2dc6935e9a2262ac44882c7e9"
+    },
+    {
+      "path": "tests/computer-execution.test.ts",
+      "sourceSha256": "3e9b3323f3e312db09a54a2099fe113e74f75818a02cfd0b996c9c893d569ec4",
+      "integratedSha256": "3e9b3323f3e312db09a54a2099fe113e74f75818a02cfd0b996c9c893d569ec4"
+    },
+    {
+      "path": "tests/computer-service.test.ts",
+      "sourceSha256": "ca327d3236ec169b6719d14702c2e6db1dc8fdca10e6a42d3bf34f2dbd1038e8",
+      "integratedSha256": "4cb52f779b0e39229129947aa582917d6a461d282666fb0612183144e409c11c"
+    },
+    {
+      "path": "tests/connectivity/firewall.test.ts",
+      "sourceSha256": "9d3287c45ee4781e4b090109c99b90ac2aa9f90ef14390a66f272097541548be",
+      "integratedSha256": "9d3287c45ee4781e4b090109c99b90ac2aa9f90ef14390a66f272097541548be"
+    },
+    {
+      "path": "tests/connectivity/manager.test.ts",
+      "sourceSha256": "e4a6bb27e0c525c836375bb95ffe5b4b34bbc3f9cd1f1aea387264d159073648",
+      "integratedSha256": "e4a6bb27e0c525c836375bb95ffe5b4b34bbc3f9cd1f1aea387264d159073648"
+    },
+    {
+      "path": "tests/connectivity/module-api.test.ts",
+      "sourceSha256": "0121456d725102db069268698af25f275b74faefdd0c686cb2276998fc905424",
+      "integratedSha256": "0121456d725102db069268698af25f275b74faefdd0c686cb2276998fc905424"
+    },
+    {
+      "path": "tests/connectivity/natpmp.test.ts",
+      "sourceSha256": "6fd6c0fff23a098c20f7d98ae2ea39e90dbf15c5ec9ac840f9fd50e40e3e4b66",
+      "integratedSha256": "6fd6c0fff23a098c20f7d98ae2ea39e90dbf15c5ec9ac840f9fd50e40e3e4b66"
+    },
+    {
+      "path": "tests/connectivity/stun.test.ts",
+      "sourceSha256": "210e16e50b56ecb98acfbc5de32420a9439812fa917fd092fc19192a2397ec08",
+      "integratedSha256": "210e16e50b56ecb98acfbc5de32420a9439812fa917fd092fc19192a2397ec08"
+    },
+    {
+      "path": "tests/connectivity/upnp.test.ts",
+      "sourceSha256": "d42ca8982b420d7925ac7c3a26bb1ec06dad171e327cf94326a4035d1eef9efa",
+      "integratedSha256": "d42ca8982b420d7925ac7c3a26bb1ec06dad171e327cf94326a4035d1eef9efa"
+    },
+    {
+      "path": "tests/connectivity/wan-ipv6.test.ts",
+      "sourceSha256": "714fafb13fdd99ff41e8137f23ef10e526a4f2dfb71fa8f425187048bee20f24",
+      "integratedSha256": "714fafb13fdd99ff41e8137f23ef10e526a4f2dfb71fa8f425187048bee20f24"
+    },
+    {
+      "path": "tests/desktop-capture.test.ts",
+      "sourceSha256": "76016e93cedc55fdbed118209afabbc1bc3131939b6fbc4179e7018329b09eaa",
+      "integratedSha256": "76016e93cedc55fdbed118209afabbc1bc3131939b6fbc4179e7018329b09eaa"
+    },
+    {
+      "path": "tests/desktop-frame.test.ts",
+      "sourceSha256": "17f342942519ea788fdae7dd3e71db84b8d3cacf47064a10c05050cead559357",
+      "integratedSha256": "17f342942519ea788fdae7dd3e71db84b8d3cacf47064a10c05050cead559357"
+    },
+    {
+      "path": "tests/engine-communication.test.ts",
+      "sourceSha256": "c059da7755aa540cbd3901a95bcd96226324bb70de198c88b312fe06d3b7dea4",
+      "integratedSha256": "c059da7755aa540cbd3901a95bcd96226324bb70de198c88b312fe06d3b7dea4"
+    },
+    {
+      "path": "tests/engine-integration.test.ts",
+      "sourceSha256": "2643d4bdaad8db8e67e6344c4ebccf787676500b672cdcd91035e6eb66aebc04",
+      "integratedSha256": "2643d4bdaad8db8e67e6344c4ebccf787676500b672cdcd91035e6eb66aebc04"
+    },
+    {
+      "path": "tests/engine-registry.test.ts",
+      "sourceSha256": "bb8292b530c5fffb0e530090ddf08fc11a98967d83e52cd18b7a9493b16ffabd",
+      "integratedSha256": "bb8292b530c5fffb0e530090ddf08fc11a98967d83e52cd18b7a9493b16ffabd"
+    },
+    {
+      "path": "tests/engine-router.test.ts",
+      "sourceSha256": "19f6837c0b4f19e5feccef60d17edc0929d064ec69a43889099326a54874404d",
+      "integratedSha256": "19f6837c0b4f19e5feccef60d17edc0929d064ec69a43889099326a54874404d"
+    },
+    {
+      "path": "tests/engine-runs.test.ts",
+      "sourceSha256": "3cfacd2967f2684b387efab548538285d4da76c1e62cc6af3e6ca1a7c8806951",
+      "integratedSha256": "3cfacd2967f2684b387efab548538285d4da76c1e62cc6af3e6ca1a7c8806951"
+    },
+    {
+      "path": "tests/engine-units.test.ts",
+      "sourceSha256": "0201c223ebabc0f0af451b7559091246d2a99ac5ea63543459b661ba8661f3d2",
+      "integratedSha256": "0201c223ebabc0f0af451b7559091246d2a99ac5ea63543459b661ba8661f3d2"
+    },
+    {
+      "path": "tests/factory.test.ts",
+      "sourceSha256": "d43d9455c1f5637debff1dba19f2c48924d305538db260b14cabfca39e2ef2f1",
+      "integratedSha256": "d43d9455c1f5637debff1dba19f2c48924d305538db260b14cabfca39e2ef2f1"
+    },
+    {
+      "path": "tests/fs-scope.test.ts",
+      "sourceSha256": "7b0cb0a182a088048c7a9ce990065404bbe12b83aa0992e8c9649caaa0a8be1a",
+      "integratedSha256": "7b0cb0a182a088048c7a9ce990065404bbe12b83aa0992e8c9649caaa0a8be1a"
+    },
+    {
+      "path": "tests/helpers/remoteClient.ts",
+      "sourceSha256": "7b72e1ba4db9f7d1d207925001aec55c77b5907ac64b801edf6936cf7a8f94ba",
+      "integratedSha256": "7b72e1ba4db9f7d1d207925001aec55c77b5907ac64b801edf6936cf7a8f94ba"
+    },
+    {
+      "path": "tests/intent.test.ts",
+      "sourceSha256": "42944c3b46668f5c009a9da13e62418cb03838a7bac721ba8b2ca58d1b52020b",
+      "integratedSha256": "42944c3b46668f5c009a9da13e62418cb03838a7bac721ba8b2ca58d1b52020b"
+    },
+    {
+      "path": "tests/live-state.test.ts",
+      "sourceSha256": "6337d5ebe8b97c18d7df667a4004fa7b1ea544634531e05e424970f697e660cd",
+      "integratedSha256": "6337d5ebe8b97c18d7df667a4004fa7b1ea544634531e05e424970f697e660cd"
+    },
+    {
+      "path": "tests/live-store.test.ts",
+      "sourceSha256": "8fdc47afa4376dd3ff8b65441f51f7af540290fd23444e18d1ac0f17a3869bee",
+      "integratedSha256": "8fdc47afa4376dd3ff8b65441f51f7af540290fd23444e18d1ac0f17a3869bee"
+    },
+    {
+      "path": "tests/mobile-companion.test.ts",
+      "sourceSha256": "a1c943f614b834b4ef14bf3a553cff9549554b70ff885f79082831bdfbcbd0c9",
+      "integratedSha256": "a1c943f614b834b4ef14bf3a553cff9549554b70ff885f79082831bdfbcbd0c9"
+    },
+    {
+      "path": "tests/performance.test.ts",
+      "sourceSha256": "7dc0ce7b5d7355b1d567cd75549c1fae31406695e095bec8838e3094b981a145",
+      "integratedSha256": "7dc0ce7b5d7355b1d567cd75549c1fae31406695e095bec8838e3094b981a145"
+    },
+    {
+      "path": "tests/policy.test.ts",
+      "sourceSha256": "e430c7c5150a1d20432f391eecd5ffd4330a30648dd0e715b4e65dead0145127",
+      "integratedSha256": "e430c7c5150a1d20432f391eecd5ffd4330a30648dd0e715b4e65dead0145127"
+    },
+    {
+      "path": "tests/protocol.test.ts",
+      "sourceSha256": "88a1bab11ad4aebb269497a465fd0a885769f229d8200777b8a290f2a8845c3a",
+      "integratedSha256": "88a1bab11ad4aebb269497a465fd0a885769f229d8200777b8a290f2a8845c3a"
+    },
+    {
+      "path": "tests/quick-computer.test.ts",
+      "sourceSha256": "b457ac0418f54329d1636272765ff13c68e191dff91d7421458fdb0f1450c299",
+      "integratedSha256": "b457ac0418f54329d1636272765ff13c68e191dff91d7421458fdb0f1450c299"
+    },
+    {
+      "path": "tests/remote-auth.test.ts",
+      "sourceSha256": "88dd420f290f7e88e7bedd9f91b5d6a96278b86b064ed65871f76d5abd321f8b",
+      "integratedSha256": "88dd420f290f7e88e7bedd9f91b5d6a96278b86b064ed65871f76d5abd321f8b"
+    },
+    {
+      "path": "tests/remote-server.test.ts",
+      "sourceSha256": "4cfda5fdc2c2c8d79a77186f6b07dde9601d083da18105671e0665d41720f4f9",
+      "integratedSha256": "4cfda5fdc2c2c8d79a77186f6b07dde9601d083da18105671e0665d41720f4f9"
+    },
+    {
+      "path": "tests/robots.test.ts",
+      "sourceSha256": "4c24c4d4ecd8bde2fb32c60860c34294bba07127c4c0ba411c1ba5c42f9d08d4",
+      "integratedSha256": "4c24c4d4ecd8bde2fb32c60860c34294bba07127c4c0ba411c1ba5c42f9d08d4"
+    },
+    {
+      "path": "tests/router.test.ts",
+      "sourceSha256": "ba32511f62e76ac0097f4209be819b8de13b05b30a71ca449dee079a76c44214",
+      "integratedSha256": "ba32511f62e76ac0097f4209be819b8de13b05b30a71ca449dee079a76c44214"
+    },
+    {
+      "path": "tests/runtime-preview.test.ts",
+      "sourceSha256": "b006363f43dd0ce75dd844fad1fd6ddf5ee93c7c2949a466cf1e554a81b4372b",
+      "integratedSha256": "b006363f43dd0ce75dd844fad1fd6ddf5ee93c7c2949a466cf1e554a81b4372b"
+    },
+    {
+      "path": "tests/scheduler.test.ts",
+      "sourceSha256": "5a03fed6df6430ca4bf545157d6c10c398011154ab6b658cf27bbfd1552998ff",
+      "integratedSha256": "5a03fed6df6430ca4bf545157d6c10c398011154ab6b658cf27bbfd1552998ff"
+    },
+    {
+      "path": "tests/windows-native.test.ts",
+      "sourceSha256": "d7ef84706bd9170643d46fcba01efe1cf1a5ff68bf0e6d79a33ad466e9342f68",
+      "integratedSha256": "d7ef84706bd9170643d46fcba01efe1cf1a5ff68bf0e6d79a33ad466e9342f68"
+    },
+    {
+      "path": "tests/workspace-backend.test.ts",
+      "sourceSha256": "6ebc42b23b24cc3e5aaa6f8ec19fdfae4fee8f8d1f881e2afcb49aa00f1e37a5",
+      "integratedSha256": "6ebc42b23b24cc3e5aaa6f8ec19fdfae4fee8f8d1f881e2afcb49aa00f1e37a5"
+    },
+    {
+      "path": "tests/workspace-store.test.ts",
+      "sourceSha256": "d3d9b73d1fe43382470c0cf2182cf74e63c89d8cb86897e70edba84d2228a769",
+      "integratedSha256": "d3d9b73d1fe43382470c0cf2182cf74e63c89d8cb86897e70edba84d2228a769"
+    },
+    {
+      "path": "tsconfig.json",
+      "sourceSha256": "5d3e17a61c81cf238fc33ae74f006d6f3dc0e90769706eb61e21bef9dc90738e",
+      "integratedSha256": "5d3e17a61c81cf238fc33ae74f006d6f3dc0e90769706eb61e21bef9dc90738e"
+    },
+    {
+      "path": "vitest.config.ts",
+      "sourceSha256": "37e53359176cdabdd596ee601ce8a41cbaa46cd01cfb7d7ec6cb7b68851d84ea",
+      "integratedSha256": "37e53359176cdabdd596ee601ce8a41cbaa46cd01cfb7d7ec6cb7b68851d84ea"
+    }
+  ]
+}

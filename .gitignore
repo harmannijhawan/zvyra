@@ -1,0 +1,17 @@
+node_modules/
+out/
+dist/
+*.log
+.env
+.env.*
+release/
+.agents/
+**/.agents/
+*.db
+*.db-shm
+*.db-wal
+*.pem
+*.p12
+*.pfx
+.vercel/
+coverage/

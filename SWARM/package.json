@@ -1,0 +1,92 @@
+{
+  "name": "swarm",
+  "productName": "SWARM",
+  "version": "1.0.6",
+  "description": "Give SWARM an outcome. Free-first autonomous multi-agent build platform.",
+  "main": "dist/main/main.js",
+  "private": true,
+  "author": "SWARM",
+  "license": "UNLICENSED",
+  "scripts": {
+    "assets": "node scripts/process-logo.mjs",
+    "build:main": "node scripts/build-main.mjs",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:renderer",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "electron .",
+    "dev": "npm run build && electron .",
+    "test": "vitest run",
+    "package": "npm run build && electron-builder --win --dir",
+    "release:windows": "npm run build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "4.2.6",
+    "@runonflux/nat-upnp": "^1.0.2",
+    "diff": "9.0.0",
+    "node-html-parser": "9.0.4",
+    "playwright-core": "1.63.0",
+    "qrcode": "^1.5.4",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "selfsigned": "^5.5.0",
+    "ws": "^8.22.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@tanstack/react-virtual": "3.14.13",
+    "@types/node": "24.10.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "6.1.1",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "lucide-react": "1.49.0",
+    "pngjs": "7.0.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "5.0.3",
+    "zustand": "5.0.15"
+  },
+  "build": {
+    "appId": "ai.swarm.desktop",
+    "productName": "SWARM",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "node_modules/@nut-tree-fork/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/@nut-tree-fork/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources"
+      }
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "SWARM-AI-Setup-${version}.${ext}"
+    }
+  }
+}

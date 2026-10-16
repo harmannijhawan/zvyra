@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; font-src 'self' data:; connect-src 'self' ws://localhost:* http://localhost:*"
+    />
+    <title>ZVYRA Island</title>
+  </head>
+  <body data-window="island">
+    <div id="root"></div>
+    <script type="module" src="./src/island.tsx"></script>
+  </body>
+</html>

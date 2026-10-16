@@ -1,0 +1,946 @@
+/* ZVYRA first-run setup */
+
+.ob {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--text);
+  background: radial-gradient(120% 90% at 50% 0%, #0d1a3d 0%, #060b1c 55%, #03050d 100%);
+  font-family: var(--font);
+}
+
+/* ---------------------------------------------------------------- backdrop */
+
+.ob-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ob-blob {
+  position: absolute;
+  width: 62vmax;
+  height: 62vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.42;
+  animation: ob-drift 18s ease-in-out infinite alternate;
+}
+.ob-blob.a {
+  left: -18vmax;
+  top: -24vmax;
+  background: radial-gradient(circle, #1f4dff, transparent 65%);
+}
+.ob-blob.b {
+  right: -22vmax;
+  top: 10vmax;
+  background: radial-gradient(circle, #10b8ff, transparent 65%);
+  animation-duration: 22s;
+  animation-delay: -6s;
+  opacity: 0.28;
+}
+.ob-blob.c {
+  left: 20vmax;
+  bottom: -40vmax;
+  background: radial-gradient(circle, #6b3bff, transparent 65%);
+  animation-duration: 26s;
+  opacity: 0.22;
+}
+@keyframes ob-drift {
+  to {
+    transform: translate(6vmax, 4vmax) scale(1.12);
+  }
+}
+.ob-grid {
+  position: absolute;
+  inset: -2px;
+  background:
+    linear-gradient(rgba(120, 160, 255, 0.05) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(90deg, rgba(120, 160, 255, 0.05) 1px, transparent 1px) 0 0 / 56px 56px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000, transparent 75%);
+  animation: ob-grid 30s linear infinite;
+}
+@keyframes ob-grid {
+  to {
+    background-position: 0 56px, 56px 0;
+  }
+}
+.ob-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #cfe6ff;
+  box-shadow: 0 0 6px #7fc6ff;
+  opacity: 0;
+  animation: ob-twinkle 6s ease-in-out infinite;
+}
+@keyframes ob-twinkle {
+  50% {
+    opacity: 0.75;
+  }
+}
+
+/* ---------------------------------------------------------------- chrome */
+
+.ob-drag {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 46px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 10px;
+  -webkit-app-region: drag;
+  z-index: 10;
+}
+.ob-win {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: rgba(10, 18, 40, 0.55);
+  border: 1px solid var(--border);
+  -webkit-app-region: no-drag;
+}
+.ob-win button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 28px;
+  border-radius: 8px;
+  color: rgba(235, 240, 255, 0.7);
+}
+.ob-win button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.ob-win button.close:hover {
+  background: var(--danger);
+}
+.ob-win svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ob-rail {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  margin-top: 56px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(12, 22, 48, 0.6);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  animation: ob-in 0.6s var(--ease) both;
+}
+.ob-rail-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: rgba(225, 232, 255, 0.5);
+  transition: background 0.4s, color 0.4s;
+}
+.ob-rail-step.now {
+  color: #fff;
+  background: rgba(47, 107, 255, 0.22);
+}
+.ob-rail-step.done {
+  color: rgba(225, 232, 255, 0.8);
+}
+.ob-rail-dot {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.07);
+}
+.ob-rail-step.now .ob-rail-dot {
+  background: linear-gradient(135deg, #2f6bff, #3cc8ff);
+  box-shadow: 0 0 14px rgba(60, 200, 255, 0.55);
+}
+.ob-rail-step.done .ob-rail-dot {
+  background: var(--success);
+  color: #04210f;
+}
+.ob-rail-dot svg {
+  width: 12px;
+  height: 12px;
+}
+.ob-rail-line {
+  width: 18px;
+  height: 1px;
+  margin-left: 4px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------------------------------------------------------------- stage */
+
+.ob-stage {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 28px 34px;
+  overflow-y: auto;
+}
+.ob-stage.s-welcome {
+  padding-top: 40px;
+}
+@keyframes ob-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+    filter: blur(8px);
+  }
+}
+
+/* ---------------------------------------------------------------- welcome */
+
+.ob-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 640px;
+}
+.ob-logo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 260px;
+  height: 230px;
+  animation: ob-logo-in 1.3s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+@keyframes ob-logo-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6) rotate(-8deg);
+    filter: blur(20px);
+  }
+}
+.ob-z {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 14px 40px rgba(31, 120, 255, 0.55));
+  animation: ob-float 6s ease-in-out infinite;
+}
+@keyframes ob-float {
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.ob-logo-glow {
+  position: absolute;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(47, 107, 255, 0.45), transparent 65%);
+  filter: blur(10px);
+  animation: ob-pulse 4s ease-in-out infinite;
+}
+@keyframes ob-pulse {
+  50% {
+    transform: scale(1.15);
+    opacity: 0.7;
+  }
+}
+.ob-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(120, 180, 255, 0.18);
+}
+.ob-ring::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: #8fe0ff;
+  box-shadow: 0 0 10px #3cc8ff, 0 0 20px #2f6bff;
+}
+.ob-ring.r1 {
+  width: 200px;
+  height: 200px;
+  animation: spin 9s linear infinite;
+}
+.ob-ring.r2 {
+  width: 250px;
+  height: 250px;
+  border-style: dashed;
+  border-color: rgba(120, 180, 255, 0.1);
+  animation: spin 16s linear infinite reverse;
+}
+.ob-ring.r3 {
+  width: 300px;
+  height: 300px;
+  border-color: rgba(120, 180, 255, 0.07);
+  animation: spin 26s linear infinite;
+}
+.ob-word {
+  margin-top: 6px;
+  color: #f3f6ff;
+  animation: ob-in 0.9s var(--ease) 0.45s both;
+}
+.ob-tag {
+  margin-top: 10px;
+  font-size: 11.5px;
+  letter-spacing: 0.42em;
+  color: rgba(190, 210, 255, 0.6);
+  animation: ob-in 0.9s var(--ease) 0.6s both;
+}
+.ob-wave {
+  margin: 22px 0 6px;
+  opacity: 0.85;
+  animation: ob-in 0.9s var(--ease) 0.75s both;
+}
+.ob-lede {
+  margin: 8px 0 26px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: rgba(225, 232, 255, 0.72);
+  animation: ob-in 0.9s var(--ease) 0.9s both;
+}
+.ob-name {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+  animation: ob-in 0.9s var(--ease) 1.05s both;
+}
+.ob-name .ob-input {
+  flex: 1;
+  height: 48px;
+  font-size: 15px;
+}
+
+/* ---------------------------------------------------------------- shared controls */
+
+.ob-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(138, 168, 255, 0.16);
+  background: rgba(4, 9, 24, 0.55);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.ob-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(47, 107, 255, 0.2);
+}
+.ob-input::placeholder {
+  color: rgba(200, 212, 255, 0.38);
+}
+.ob-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: rgba(235, 240, 255, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: transform 0.2s var(--ease-spring), box-shadow 0.25s, background 0.2s, opacity 0.2s;
+  white-space: nowrap;
+}
+.ob-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.ob-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+}
+.ob-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ob-btn.primary {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #2f6bff 0%, #1d8bff 55%, #2bc4ff 100%);
+  box-shadow: 0 8px 26px rgba(31, 110, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.ob-btn.primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: ob-sheen 3.6s ease-in-out infinite;
+}
+@keyframes ob-sheen {
+  60%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+.ob-btn.primary:hover:not(:disabled) {
+  box-shadow: 0 12px 34px rgba(31, 110, 255, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  background: linear-gradient(135deg, #3a76ff 0%, #2896ff 55%, #3ccbff 100%);
+}
+.ob-btn.ghost {
+  background: transparent;
+}
+.ob-btn.sm {
+  height: 40px;
+  padding: 0 14px;
+}
+.ob-btn.lg {
+  height: 48px;
+  padding: 0 24px;
+  font-size: 15px;
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.ob-panel {
+  width: 100%;
+  max-width: 720px;
+  padding: 28px 30px 22px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(18, 30, 64, 0.72), rgba(8, 14, 32, 0.78));
+  border: 1px solid rgba(138, 168, 255, 0.14);
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px) saturate(130%);
+  animation: ob-in 0.7s var(--ease) both;
+}
+.ob-panel.wide {
+  max-width: 900px;
+}
+.ob-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+.ob-head h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.ob-head p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: rgba(225, 232, 255, 0.66);
+}
+.ob-head-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  color: #fff;
+  background: linear-gradient(135deg, #2f6bff, #3cc8ff);
+  box-shadow: 0 8px 24px rgba(47, 107, 255, 0.45);
+}
+.ob-head-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.ob-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ob-foot-note,
+.ob-grow {
+  flex: 1;
+}
+.ob-foot-note {
+  text-align: center;
+  font-size: 12.5px;
+  color: rgba(225, 232, 255, 0.55);
+}
+
+/* ---------------------------------------------------------------- providers */
+
+.ob-providers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.ob-prov {
+  position: relative;
+  overflow: hidden;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  transition: border-color 0.4s, box-shadow 0.4s, background 0.4s;
+  animation: ob-in 0.55s var(--ease) both;
+  animation-delay: calc(var(--i) * 70ms + 120ms);
+}
+.ob-prov.req {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.12), rgba(60, 200, 255, 0.05));
+  border-color: rgba(90, 150, 255, 0.28);
+}
+.ob-prov.st-ok {
+  border-color: rgba(51, 209, 122, 0.45);
+  box-shadow: 0 0 0 1px rgba(51, 209, 122, 0.15), 0 0 30px rgba(51, 209, 122, 0.12);
+}
+.ob-prov.st-error {
+  border-color: rgba(255, 95, 109, 0.45);
+  animation: ob-shake 0.42s ease;
+}
+@keyframes ob-shake {
+  25% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
+}
+.ob-prov-top {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 11px;
+}
+.ob-prov-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #3b4b80, #1b2550);
+}
+.req .ob-prov-badge {
+  background: linear-gradient(135deg, #4285f4, #1a73e8 60%, #34a853);
+}
+.ob-prov-text {
+  flex: 1;
+  min-width: 0;
+}
+.ob-prov-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+  font-size: 14px;
+}
+.ob-prov-purpose {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(225, 232, 255, 0.55);
+}
+.ob-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 19px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: rgba(225, 232, 255, 0.6);
+  background: rgba(255, 255, 255, 0.07);
+}
+.ob-pill.req {
+  color: #bcd4ff;
+  background: rgba(47, 107, 255, 0.25);
+}
+.ob-pill.ok {
+  color: #9ff0c3;
+  background: rgba(51, 209, 122, 0.18);
+  animation: ob-pop 0.45s var(--ease-spring);
+}
+.ob-pill svg {
+  width: 11px;
+  height: 11px;
+}
+@keyframes ob-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+.ob-link {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #8fc4ff;
+  text-decoration: none;
+}
+.ob-link:hover {
+  color: #c9e2ff;
+}
+.ob-link svg {
+  width: 12px;
+  height: 12px;
+}
+.ob-prov-row {
+  display: flex;
+  gap: 8px;
+}
+.ob-key {
+  position: relative;
+  flex: 1;
+}
+.ob-key .ob-input {
+  padding-right: 40px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.ob-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: rgba(225, 232, 255, 0.5);
+}
+.ob-eye:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+.ob-eye svg {
+  width: 15px;
+  height: 15px;
+}
+.ob-prov-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 9px;
+  font-size: 12.3px;
+  line-height: 1.4;
+  animation: ob-in 0.35s var(--ease) both;
+}
+.ob-prov-msg svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+}
+.ob-prov-msg.ok {
+  color: #9ff0c3;
+}
+.ob-prov-msg.bad {
+  color: #ffb3ba;
+}
+.ob-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+.ob-scan::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, #3cc8ff, #fff, #2f6bff, transparent);
+  animation: tc-beam 1.1s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+}
+@keyframes tc-beam {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+/* ---------------------------------------------------------------- voice */
+
+.ob-voice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 0 4px;
+}
+.ob-orb {
+  --lvl: 0;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+}
+.ob-orb-core {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  color: #fff;
+  background: radial-gradient(circle at 35% 30%, #67b8ff, #2f6bff 55%, #1a2fa8);
+  box-shadow: 0 0 calc(24px + var(--lvl) * 50px) rgba(60, 160, 255, calc(0.4 + var(--lvl) * 0.5));
+  transform: scale(calc(1 + var(--lvl) * 0.16));
+  transition: transform 0.08s linear, box-shadow 0.08s linear, background 0.5s;
+}
+.ob-orb-core svg {
+  width: 36px;
+  height: 36px;
+}
+.ph-trained .ob-orb-core,
+.ph-heard .ob-orb-core {
+  background: radial-gradient(circle at 35% 30%, #7dffc0, #1fbf6c 60%, #0b6e3c);
+  box-shadow: 0 0 50px rgba(51, 209, 122, 0.55);
+  animation: ob-pop 0.5s var(--ease-spring);
+}
+.ob-orb-ring {
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(60, 200, 255, 0.5);
+  opacity: 0;
+  animation: tc-ping 2s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+.ob-orb-ring.two {
+  animation-delay: 1s;
+}
+.ph-recording .ob-orb-ring {
+  border-color: rgba(255, 95, 160, 0.6);
+  animation-duration: 1.2s;
+}
+@keyframes tc-ping {
+  0% {
+    opacity: 0.8;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+.ob-meter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 46px;
+}
+.ob-meter i {
+  width: 4px;
+  min-height: 3px;
+  border-radius: 3px;
+  background: linear-gradient(0deg, #2f6bff, #3cc8ff);
+  transition: height 0.08s linear;
+}
+.ob-samples {
+  display: flex;
+  gap: 10px;
+}
+.ob-sample {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 13px;
+  color: rgba(225, 232, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.35s var(--ease-spring);
+}
+.ob-sample.now {
+  color: #fff;
+  border-color: rgba(255, 95, 160, 0.7);
+  box-shadow: 0 0 18px rgba(255, 95, 160, 0.45);
+  animation: ob-pulse 1.1s ease-in-out infinite;
+}
+.ob-sample.got {
+  color: #04210f;
+  background: var(--success);
+  border-color: transparent;
+  box-shadow: 0 0 16px rgba(51, 209, 122, 0.45);
+  transform: scale(1.06);
+}
+.ob-sample svg {
+  width: 16px;
+  height: 16px;
+}
+.ob-voice-say {
+  min-height: 22px;
+  font-size: 15px;
+  text-align: center;
+  color: rgba(240, 245, 255, 0.9);
+}
+
+/* ---------------------------------------------------------------- tour */
+
+.ob-features {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.ob-feature {
+  padding: 16px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  animation: ob-in 0.6s var(--ease) both;
+  animation-delay: calc(var(--i) * 90ms + 100ms);
+  transition: transform 0.3s var(--ease-spring), border-color 0.3s;
+}
+.ob-feature:hover {
+  transform: translateY(-3px);
+  border-color: rgba(90, 160, 255, 0.35);
+}
+.ob-feature-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.9), rgba(60, 200, 255, 0.85));
+  box-shadow: 0 6px 18px rgba(47, 107, 255, 0.35);
+}
+.ob-feature-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.ob-feature-title {
+  margin-top: 12px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.ob-feature-say {
+  margin-top: 6px;
+  font-size: 12.3px;
+  font-style: italic;
+  color: #a9d4ff;
+}
+.ob-feature-body {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(225, 232, 255, 0.58);
+}
+.ob-demo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(47, 107, 255, 0.16), rgba(140, 90, 255, 0.1));
+  border: 1px solid rgba(110, 150, 255, 0.25);
+  animation: ob-in 0.6s var(--ease) 0.5s both;
+}
+.ob-demo-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  color: rgba(225, 232, 255, 0.62);
+}
+.ob-demo-text b {
+  font-size: 14px;
+  color: #fff;
+}
+.ob-places {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.ob-place {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  animation: ob-in 0.6s var(--ease) both;
+  animation-delay: calc(var(--i) * 80ms + 600ms);
+}
+.ob-place-n {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  color: #9fd0ff;
+  background: rgba(60, 140, 255, 0.16);
+}
+.ob-place-name {
+  font-weight: 650;
+  font-size: 13.5px;
+}
+.ob-place-name span {
+  margin-left: 6px;
+  font-weight: 500;
+  font-size: 11.5px;
+  color: rgba(225, 232, 255, 0.45);
+}
+.ob-place-what {
+  margin-top: 2px;
+  font-size: 12.3px;
+  color: rgba(225, 232, 255, 0.6);
+}
+
+@media (max-width: 900px) {
+  .ob-features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ob-providers,
+  .ob-places {
+    grid-template-columns: 1fr;
+  }
+}

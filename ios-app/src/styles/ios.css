@@ -1,0 +1,240 @@
+/*
+ * ZVYRA iOS polish — layered on top of the desktop design system (base.css +
+ * app.css). It never forks the look; it adapts the same surfaces to touch:
+ *
+ *  1. Safe areas            — pad under the notch, Dynamic Island and home bar.
+ *  2. No window chrome       — hide the Windows min/max/close controls.
+ *  3. Touch feedback         — map `.is-pressed` (set by touch.ts) to the same
+ *                              treatment the desktop gives `:hover`.
+ *  4. Native scroll feel     — momentum scrolling, no overscroll chaining,
+ *                              no text-size inflation, no tap highlight.
+ *  5. Phone layout           — the fixed sidebar becomes a floating bottom tab
+ *                              bar on narrow screens; the content fills the
+ *                              screen. iPad-width screens keep the sidebar.
+ */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --ios-tabbar-h: 64px;
+}
+
+/* The whole surface is a web view: lock it down so it feels native. */
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  background: var(--bg-0);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+/* Momentum scrolling everywhere the desktop uses a scroll container. */
+.nav,
+.main,
+.page,
+.scroll,
+[class*='-list'],
+[class*='-body'] {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 1 + 2 — there is no OS window frame on iOS, so drop the controls and the
+   drag regions that only mean something to Electron. */
+.win-controls {
+  display: none !important;
+}
+.app,
+.sidebar,
+.titlebar {
+  -webkit-app-region: no-drag;
+}
+
+/* The title bar becomes a thin status-bar spacer so content clears the notch. */
+.titlebar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--safe-top);
+  min-height: var(--safe-top);
+  padding: 0;
+  pointer-events: none;
+}
+
+/* 3 — touch pressed states mirror the desktop hover affordances. */
+.btn.is-pressed:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-2);
+  transform: translateY(1px);
+}
+.btn-primary.is-pressed:not(:disabled) {
+  background: linear-gradient(180deg, #4a87ff, #3168f5);
+}
+.btn-ghost.is-pressed:not(:disabled) {
+  background: rgba(138, 168, 255, 0.1);
+  color: var(--text);
+}
+.icon-btn.is-pressed:not(:disabled) {
+  background: rgba(138, 168, 255, 0.14);
+  color: var(--text);
+}
+.nav-item.is-pressed {
+  color: #fff;
+  background: rgba(138, 168, 255, 0.12);
+}
+.card.is-pressed {
+  border-color: var(--border-2);
+}
+
+/* 4 — comfortable minimum tap target (Apple HIG ~44pt) without changing the
+   visual size of small controls: expand the hit area, not the paint. */
+.icon-btn,
+.nav-item,
+.segmented button,
+.toggle {
+  touch-action: manipulation;
+}
+.icon-btn::after,
+.toggle::before {
+  content: '';
+  position: absolute;
+  inset: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.icon-btn,
+.toggle {
+  position: relative;
+}
+
+/* Let the user select text inside readable surfaces, like the desktop does. */
+.selectable,
+.mono,
+.input,
+.textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- phone */
+/* Narrow screens (iPhone, iPad portrait split): one column, bottom tab bar. */
+@media (max-width: 820px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr;
+  }
+
+  /* Turn the sidebar into a floating bottom tab bar. */
+  .sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: 80;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px calc(10px + var(--safe-left)) calc(8px + var(--safe-bottom)) calc(10px + var(--safe-right));
+    border-right: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(10, 20, 46, 0.82), rgba(6, 12, 30, 0.94));
+    backdrop-filter: blur(28px) saturate(140%);
+    min-height: var(--ios-tabbar-h);
+  }
+
+  /* Brand lockup and profile card don't belong in a tab bar. */
+  .sidebar > .brand-lockup,
+  .sidebar > .profile-card {
+    display: none;
+  }
+
+  /* The nav scrolls horizontally through the sections. */
+  .nav {
+    flex-direction: row;
+    gap: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin: 0;
+    padding: 0 2px;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-item {
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 60px;
+    padding: 7px 10px;
+    justify-content: center;
+    text-align: center;
+    border-radius: 14px;
+  }
+  .nav-item svg {
+    width: 21px;
+    height: 21px;
+  }
+  .nav-label {
+    font-size: 10.5px;
+    line-height: 1;
+  }
+  .nav-count {
+    position: absolute;
+    top: 3px;
+    right: 10px;
+    margin: 0;
+  }
+
+  /* Content fills the screen and clears the tab bar + safe areas. */
+  .main {
+    padding-top: var(--safe-top);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+    padding-bottom: calc(var(--ios-tabbar-h) + var(--safe-bottom));
+  }
+
+  /* The preview banner sits below the status bar, not under it. */
+  .banner {
+    margin-top: var(--safe-top);
+  }
+
+  /* Boot screen clears the notch too. */
+  .boot {
+    padding: var(--safe-top) var(--safe-left) var(--safe-bottom) var(--safe-right);
+  }
+}
+
+/* ---------------------------------------------------------------- tablet */
+/* Wide screens (iPad landscape) keep the desktop sidebar, just inset for safe
+   areas and with a slightly roomier nav for touch. */
+@media (min-width: 821px) {
+  .app {
+    grid-template-columns: calc(236px + var(--safe-left)) 1fr;
+  }
+  .sidebar {
+    padding-left: calc(12px + var(--safe-left));
+    padding-top: calc(22px + var(--safe-top));
+    padding-bottom: calc(14px + var(--safe-bottom));
+  }
+  .main {
+    padding-right: var(--safe-right);
+  }
+  .titlebar {
+    left: calc(236px + var(--safe-left));
+  }
+  .nav-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+}

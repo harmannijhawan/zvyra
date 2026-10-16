@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "target": "ES2023", "lib": ["ES2023", "DOM"], "module": "preserve", "moduleResolution": "bundler", "strict": true, "skipLibCheck": true, "esModuleInterop": true, "noEmit": true, "types": ["node"] },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "../SWARM/electron/**/*.ts", "../SWARM/shared/**/*.ts"]
+}

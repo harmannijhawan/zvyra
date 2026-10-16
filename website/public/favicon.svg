@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -6 108 108">
+  <defs>
+    <linearGradient id="f" x1="0.05" y1="0" x2="0.95" y2="1"><stop offset="0" stop-color="#8fdcff"/><stop offset="0.32" stop-color="#3f93ff"/><stop offset="0.66" stop-color="#2b62f5"/><stop offset="1" stop-color="#b7a6ff"/></linearGradient>
+    <radialGradient id="h" cx="0.22" cy="0.12" r="0.75"><stop offset="0" stop-color="#fff" stop-opacity="0.6"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.08"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="s" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#e9fbff" stop-opacity="0.95"/><stop offset="1" stop-color="#bfe6ff" stop-opacity="0.15"/></linearGradient>
+  </defs>
+  <path d="M3.6 43.6C1.1 21.3 7.4 3.2 28.7 1.1H84C95 1.1 99 10 93 19L41.5 68.1C62.8 57.4 86.2 54.3 97.2 57C100 68.1 92.6 89.4 75.5 93.6H20.2C4 94.7-1 84 6 76L58.5 19.1C35.1 19.1 11.7 27.7 3.6 43.6Z" fill="url(#f)"/><path d="M58.5 19.1L93 19C88 27 70 31 52 26Z" fill="#1630b8" opacity="0.35"/>
+  <path d="M3.6 43.6C11.7 27.7 35.1 19.1 58.5 19.1L63.5 13.8C36 13.6 11 23 3.6 43.6Z" fill="url(#s)"/><path d="M41.5 68.1C62.8 57.4 86.2 54.3 97.2 57C84 52.6 60 55.5 47.2 62.6Z" fill="url(#s)" opacity="0.85"/>
+  <path d="M3.6 43.6C1.1 21.3 7.4 3.2 28.7 1.1H84C95 1.1 99 10 93 19L41.5 68.1C62.8 57.4 86.2 54.3 97.2 57C100 68.1 92.6 89.4 75.5 93.6H20.2C4 94.7-1 84 6 76L58.5 19.1C35.1 19.1 11.7 27.7 3.6 43.6Z" fill="url(#h)"/>
+</svg>

@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "info": {
+    "contractVersion": "1.1.0",
+    "backend": "SWARM embedded",
+    "backendVersion": "1.0.6 + ZVYRA 0.1",
+    "appVersion": "smoke",
+    "platform": "win32",
+    "dataPath": "C:\\Users\\user\\AppData\\Local\\Temp\\zvyra-electron-smoke-lskKM2",
+    "capabilities": {
+      "chat": true,
+      "chatStreaming": true,
+      "tasks": true,
+      "taskPause": true,
+      "agents": true,
+      "projects": true,
+      "memory": true,
+      "automations": true,
+      "notifications": true,
+      "diagnostics": true,
+      "voice": false,
+      "wakeWord": false,
+      "computerControl": true,
+      "calls": false,
+      "files": false,
+      "terminal": false,
+      "browser": false,
+      "apps": false
+    }
+  },
+  "diagnostics": [
+    {
+      "id": "sqlite",
+      "label": "SQLite",
+      "status": "ok",
+      "detail": "Persistent database initialized"
+    },
+    {
+      "id": "swarm",
+      "label": "SWARM providers",
+      "status": "warning",
+      "detail": "Embedded SWARM: connect a BYOK provider and test it",
+      "fixRoute": "settings/swarm"
+    },
+    {
+      "id": "voice",
+      "label": "Windows speech",
+      "status": "ok"
+    }
+  ],
+  "persisted": true,
+  "dbExists": true
+}
