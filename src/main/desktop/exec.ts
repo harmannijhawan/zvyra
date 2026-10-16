@@ -75,14 +75,15 @@ export const stripAnsi = (s: string) => s.replace(ANSI, '')
 /** PowerShell wrapper: UTF-8 output, no progress noise, real exit codes for cmdlets and native programs. */
 export function powershellScript(command: string): string {
   return [
-    "$ErrorActionPreference = 'Continue'",
+    // Errors stop the script and fail the run, unless the command itself says
+    // -ErrorAction SilentlyContinue / Ignore (which is then respected).
+    "$ErrorActionPreference = 'Stop'",
     "$ProgressPreference = 'SilentlyContinue'",
     'try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}',
     '$OutputEncoding = New-Object System.Text.UTF8Encoding $false',
     // Windows PowerShell 5.1 otherwise reads BOM-less UTF-8 as ANSI and writes UTF-16.
     "$PSDefaultParameterValues['*:Encoding'] = 'utf8'",
     '$global:LASTEXITCODE = 0',
-    '$__zvyraErrorCount = $Error.Count',
     '$__zvyraFailed = $false',
     // Format output inside the script: Windows PowerShell 5.1 otherwise loses pending
     // table output (Get-Location, Get-ChildItem…) when the script exits right after it.
@@ -96,7 +97,6 @@ export function powershellScript(command: string): string {
     '}',
     'if ($__zvyraFailed) { exit 1 }',
     'if ($LASTEXITCODE -is [int] -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
-    'if ($Error.Count -gt $__zvyraErrorCount) { exit 1 }',
     'exit 0',
     ''
   ].join('\r\n')

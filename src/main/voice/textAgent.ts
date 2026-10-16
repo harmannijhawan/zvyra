@@ -8,7 +8,7 @@ import { GoogleGenAI, ThinkingLevel, type Content, type FunctionCall } from '@go
 import type { ShellLogger } from '../backendContext'
 import { AGENT_GUIDE, BUILDER_GUIDE } from './desktopTools'
 import { ALL_TOOL_DECLARATIONS, runTool, type ToolHost } from './extraTools'
-import { FLASH_MODELS, isRetryable } from '../tools/gemini'
+import { FLASH_MODELS, isRetryable, markModelFailed, markModelOk, modelOrder } from '../tools/gemini'
 
 // One model call may write several whole files; aborting a slow-but-working call wastes all of it.
 const ATTEMPT_TIMEOUT_MS = 300_000
@@ -36,6 +36,11 @@ const ACTION_LABEL: Record<string, (a: Record<string, unknown>) => string> = {
   inspect_project: () => 'Inspecting the project',
   open_project: (a) => `Opening ${String(a['name'] ?? 'the project')}`,
   get_workspace: () => 'Checking the workspace',
+  list_open_apps: () => 'Checking open apps',
+  close_app: (a) => `Closing ${String(a['name'] ?? 'the app')}`,
+  window: (a) => `${String(a['action'] ?? 'Arranging')} ${String(a['name'] ?? '')}`.trim(),
+  press_keys: (a) => `Pressing ${String(a['keys'] ?? '')}`,
+  pc_settings: (a) => `PC: ${String(a['action'] ?? '')}`.replace(/_/g, ' '),
   get_status: () => 'Checking status',
   web_search: (a) => `Searching: ${String(a['query'] ?? '').slice(0, 60)}`,
   read_webpage: () => 'Reading a web page',
@@ -139,7 +144,7 @@ export class TextAgent {
 
   private async generate(ai: GoogleGenAI, contents: Content[], systemInstruction: string, signal?: AbortSignal) {
     let lastErr: unknown
-    const order = [this.model, ...FLASH_MODELS.filter((m) => m !== this.model)]
+    const order = modelOrder(FLASH_MODELS, this.model)
     for (let i = 0; i < order.length; i++) {
       const model = order[i]
       const attempt = AbortSignal.timeout(ATTEMPT_TIMEOUT_MS)
@@ -160,6 +165,7 @@ export class TextAgent {
           }
         })
         this.model = model
+        markModelOk(model)
         return r
       } catch (err) {
         lastErr = err
@@ -172,6 +178,7 @@ export class TextAgent {
           continue
         }
         if (!attempt.aborted && !isRetryable(err)) throw err
+        markModelFailed(model, attempt.aborted ? new Error('timed out') : err)
         this.logger.warn('agent', `model ${model} unavailable, trying next`, { message: msg.slice(0, 200) })
       }
     }

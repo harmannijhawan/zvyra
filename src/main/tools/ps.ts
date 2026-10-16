@@ -1,35 +1,19 @@
 /**
- * OWNER: Kiro. Runs a short, fixed PowerShell script (never user-typed text)
- * and returns stdout. Used by tools for things Node can't do directly on
- * Windows: media keys, master volume, battery.
+ * OWNER: Kiro. Runs a short, FIXED PowerShell script (never AI- or user-typed
+ * text) and returns stdout. Used by tools for things Node can't do directly on
+ * Windows: media keys, volume, battery, windows and processes.
+ *
+ * Values are passed in environment variables (read as $env:ZVYRA_*), never
+ * spliced into the script text, so names like "it's & $(x)" can't inject code.
+ * Runs through the shared executor (script file, closed stdin, real exit codes).
  */
-import { spawn } from 'node:child_process'
-import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { runCommand } from '../desktop/exec'
 
-const POWERSHELL = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
-
-export function runPowerShell(script: string, timeoutMs = 15_000): Promise<string> {
-  // Errors go to stderr as plain text (PowerShell would otherwise serialise them as CLIXML).
-  const wrapped = `$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'\ntry {\n${script}\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`
-  const encoded = Buffer.from(wrapped, 'utf16le').toString('base64')
-  return new Promise((resolve, reject) => {
-    const child = spawn(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded], { windowsHide: true })
-    let out = ''
-    let err = ''
-    const timer = setTimeout(() => {
-      child.kill()
-      reject(new Error('PowerShell timed out'))
-    }, timeoutMs)
-    child.stdout.on('data', (b: Buffer) => (out += b.toString('utf8')))
-    child.stderr.on('data', (b: Buffer) => (err += b.toString('utf8')))
-    child.once('error', (e) => {
-      clearTimeout(timer)
-      reject(e)
-    })
-    child.once('close', (code) => {
-      clearTimeout(timer)
-      if (code === 0) resolve(out.trim())
-      else reject(new Error((err || out).trim().split('\n').slice(-3).join(' ').slice(0, 400) || `PowerShell exited with ${code}`))
-    })
-  })
+export async function runPowerShell(script: string, timeoutMs = 15_000, env: Record<string, string> = {}): Promise<string> {
+  const r = await runCommand({ shell: 'powershell', command: script, cwd: tmpdir(), timeoutMs, env })
+  if (r.status === 'exited' && r.exitCode === 0) return r.stdout.trim()
+  if (r.status === 'timeout') throw new Error('PowerShell timed out')
+  const msg = (r.stderr || r.stdout || r.error || '').trim().split(/\r?\n/).filter(Boolean)
+  throw new Error(msg.slice(0, 3).join(' ').slice(0, 400) || `PowerShell exited with ${r.exitCode}`)
 }

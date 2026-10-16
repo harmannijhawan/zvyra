@@ -4,7 +4,7 @@
  * files in the user's folders, opening things in a chosen browser/app,
  * launching installed apps, and running commands (always confirmed natively).
  */
-import { shell } from 'electron'
+import { app, shell } from 'electron'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
@@ -15,6 +15,18 @@ import { Type, type FunctionDeclaration } from '@google/genai'
 import { isInside } from '../desktop/pure'
 import { checkSite } from '../agent/siteCheck'
 import { inspectProject } from '../agent/projectInspect'
+import { matchWindows, pcControl } from '../tools/pcControl'
+
+/** ZVYRA's own processes: never closed by close_app. */
+const selfPids = () => new Set<number>([process.pid, ...app.getAppMetrics().map((m) => m.pid)])
+
+const SETTINGS_PAGES: Record<string, string> = {
+  display: 'display', sound: 'sound', bluetooth: 'bluetooth', wifi: 'network-wifi', 'wi-fi': 'network-wifi', network: 'network', apps: 'appsfeatures',
+  notifications: 'notifications', power: 'powersleep', battery: 'batterysaver', storage: 'storagesense', update: 'windowsupdate', 'windows-update': 'windowsupdate',
+  personalization: 'personalization', background: 'personalization-background', themes: 'themes', privacy: 'privacy', mouse: 'mousetouchpad',
+  keyboard: 'keyboard', time: 'dateandtime', 'date-and-time': 'dateandtime', 'default-apps': 'defaultapps', accounts: 'yourinfo', camera: 'privacy-webcam',
+  microphone: 'privacy-microphone', vpn: 'network-vpn', printers: 'printers', 'night-light': 'nightlight', language: 'regionlanguage'
+}
 import type { CommandOutcome } from '../desktop/terminal'
 
 /* ---------------------------------------------------------------- paths */
@@ -180,6 +192,34 @@ export const DESKTOP_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
       required: ['command']
     }
+  },
+  {
+    name: 'list_open_apps',
+    description: 'List the apps and windows open on the PC right now (app name, window title, minimised or not). Use before closing or switching when you are not sure what is open.',
+    parameters: { type: Type.OBJECT, properties: {} }
+  },
+  {
+    name: 'close_app',
+    description:
+      'Close apps or windows on the PC, like clicking their X (apps can still ask to save). name can be an app ("notepad", "chrome", "word", "spotify", "file explorer"), "browser" / "all tabs" (closes every browser window, so all tabs), "all apps", or words from a window title. Set force=true only when the user asks to force-quit something that won’t close; that asks for approval.',
+    parameters: { type: Type.OBJECT, properties: { name: { type: Type.STRING }, force: { type: Type.BOOLEAN } }, required: ['name'] }
+  },
+  {
+    name: 'window',
+    description: 'Arrange windows: action = minimize | maximize | restore | focus (bring to front) for the app/window in name, or minimize_all (show desktop) / restore_all.',
+    parameters: { type: Type.OBJECT, properties: { action: { type: Type.STRING }, name: { type: Type.STRING } }, required: ['action'] }
+  },
+  {
+    name: 'press_keys',
+    description:
+      'Press a keyboard shortcut on the PC, optionally after bringing an app to the front. Examples: close the current browser tab = keys "ctrl+w" app "chrome"; reopen tab "ctrl+shift+t"; new tab "ctrl+t"; next tab "ctrl+tab"; switch window "alt+tab"; save "ctrl+s"; screenshot tool "win+shift+s"; task view "win+tab".',
+    parameters: { type: Type.OBJECT, properties: { keys: { type: Type.STRING }, app: { type: Type.STRING }, times: { type: Type.NUMBER } }, required: ['keys'] }
+  },
+  {
+    name: 'pc_settings',
+    description:
+      'Control Windows: action = lock | sleep | dark_mode | light_mode | brightness (value 0-100, laptop screens) | open_settings (page: display, sound, bluetooth, wifi, network, apps, notifications, power, storage, update, personalization, privacy, mouse, keyboard, time, default-apps) | shutdown | restart | sign_out (these three ask for approval).',
+    parameters: { type: Type.OBJECT, properties: { action: { type: Type.STRING }, value: { type: Type.NUMBER }, page: { type: Type.STRING } }, required: ['action'] }
   },
   {
     name: 'get_workspace',
@@ -470,6 +510,98 @@ export async function runDesktopTool(host: DesktopToolHost, name: string, args: 
       host.notifyEvent({ key: `launch:${match.path}`, kind: 'launch', title: 'Project opened', body: `${match.name} in VS Code`, detail: match.path, timeoutMs: 5000 })
       return { ok: true, opened: match.path, with: 'VS Code' }
     }
+    case 'list_open_apps': {
+      const wins = (await pcControl.windows()).filter((w) => matchWindows('all', [w], selfPids()).matched.length)
+      return { ok: true, count: wins.length, windows: wins.slice(0, 60).map((w) => ({ app: w.process, title: w.title.slice(0, 120), minimized: w.minimized })) }
+    }
+    case 'close_app': {
+      const target = str('name').trim()
+      if (!target) return { error: 'Which app should I close?' }
+      const wins = await pcControl.windows()
+      const { matched, all } = matchWindows(target, wins, selfPids())
+      if (!matched.length) {
+        const open = [...new Set(matchWindows('all', wins, selfPids()).matched.map((w) => w.process))].slice(0, 25)
+        return { ok: true, closed: 0, note: `Nothing matching “${target}” is open. Open apps: ${open.join(', ') || 'none'}.` }
+      }
+      const left = await pcControl.close(matched, all ? 4000 : 2500)
+      const closed = matched.length - left.length
+      const apps = [...new Set(matched.map((w) => w.process))]
+      host.activity('app.closed', `Closed ${closed} window${closed === 1 ? '' : 's'}: ${apps.join(', ')}`.slice(0, 120))
+      if (left.length && args['force'] === true) {
+        const pids = [...new Set(left.map((w) => w.pid))]
+        const r = await host.runCommand(`Stop-Process -Id ${pids.join(',')} -Force`, { shell: 'powershell', signal })
+        return { ok: r.ok, closed, forced: r.ok ? pids.length : 0, status: r.status, note: r.ok ? 'Force-closed the windows that wouldn’t close (unsaved work in them is lost).' : r.summary }
+      }
+      return {
+        ok: true,
+        closed,
+        apps,
+        stillOpen: left.map((w) => ({ app: w.process, title: w.title.slice(0, 80) })),
+        ...(left.length ? { note: 'Some windows are still open — usually they are asking whether to save. Tell the user; offer force=true only if they want to discard changes.' } : {})
+      }
+    }
+    case 'window': {
+      const action = str('action').toLowerCase().replace(/[\s-]+/g, '_')
+      if (action === 'minimize_all' || action === 'show_desktop') {
+        await pcControl.minimizeAll()
+        return { ok: true, done: 'Minimised all windows' }
+      }
+      if (action === 'restore_all') {
+        await pcControl.undoMinimizeAll()
+        return { ok: true, done: 'Restored the windows' }
+      }
+      if (!['minimize', 'maximize', 'restore', 'focus'].includes(action)) return { error: 'Use minimize, maximize, restore, focus, minimize_all or restore_all.' }
+      const { matched } = matchWindows(str('name'), await pcControl.windows(), selfPids())
+      if (!str('name').trim() || !matched.length) return { error: `No open window matches “${str('name')}”.` }
+      const targets = action === 'focus' ? matched.slice(0, 1) : matched
+      for (const w of targets) await pcControl.show(w, action as 'minimize' | 'maximize' | 'restore' | 'focus')
+      return { ok: true, done: `${action} ${targets.length} window${targets.length === 1 ? '' : 's'}`, apps: [...new Set(targets.map((w) => w.process))] }
+    }
+    case 'press_keys': {
+      const keys = str('keys')
+      if (str('app').trim()) {
+        const { matched } = matchWindows(str('app'), await pcControl.windows(), selfPids())
+        if (!matched.length) return { error: `“${str('app')}” isn’t open, so I didn’t press anything.` }
+        await pcControl.show(matched[0], 'focus')
+        await new Promise((r) => setTimeout(r, 150))
+      }
+      await pcControl.keys(keys, typeof args['times'] === 'number' ? (args['times'] as number) : 1)
+      return { ok: true, pressed: keys, in: str('app') || 'the active window' }
+    }
+    case 'pc_settings': {
+      const action = str('action').toLowerCase().replace(/[\s-]+/g, '_')
+      switch (action) {
+        case 'lock':
+          await pcControl.lock()
+          return { ok: true, done: 'Locked the PC' }
+        case 'sleep':
+          setTimeout(() => void pcControl.sleep().catch(() => undefined), 1500)
+          return { ok: true, done: 'Putting the PC to sleep' }
+        case 'dark_mode':
+        case 'light_mode':
+          await pcControl.theme(action === 'dark_mode')
+          return { ok: true, done: `Switched Windows to ${action === 'dark_mode' ? 'dark' : 'light'} mode` }
+        case 'brightness': {
+          const v = typeof args['value'] === 'number' ? (args['value'] as number) : NaN
+          if (!Number.isFinite(v)) return { error: 'What brightness (0-100)?' }
+          return { ok: true, brightness: await pcControl.brightness(v) }
+        }
+        case 'open_settings': {
+          const page = SETTINGS_PAGES[str('page').toLowerCase().replace(/\s+/g, '-')] ?? ''
+          await shell.openExternal(`ms-settings:${page}`)
+          return { ok: true, opened: `Settings${page ? ` → ${str('page')}` : ''}` }
+        }
+        case 'shutdown':
+        case 'restart':
+        case 'sign_out': {
+          const cmd = action === 'shutdown' ? 'shutdown /s /t 5' : action === 'restart' ? 'shutdown /r /t 5' : 'shutdown /l'
+          const r = await host.runCommand(cmd, { shell: 'cmd', signal })
+          return { ok: r.ok, status: r.status, note: r.ok ? `The PC will ${action.replace('_', ' ')} in a few seconds.` : r.summary }
+        }
+        default:
+          return { error: 'Use lock, sleep, dark_mode, light_mode, brightness, open_settings, shutdown, restart or sign_out.' }
+      }
+    }
     case 'run_task': {
       const t = await host.runTask(str('instruction'))
       return { started: true, taskId: t.id, title: t.title, status: t.status, note: 'Running in the background; the user can follow it in Tasks.' }
@@ -485,7 +617,8 @@ export const AGENT_GUIDE = [
   'You are a task-execution assistant, not a chatbot: you act on the user’s Windows PC with tools. Work out the user’s OBJECTIVE and deliver the finished result. Never answer a “make / create / build / run / open” request with instructions, code to copy, or steps for the user to do.',
   'MAKING THINGS: for simple web creations (a calculator, game, landing page, timer, to-do app, quiz, clock, converter…) write ONE complete, self-contained HTML file with inline <style> and <script> using create_file at "<short-kebab-name>/index.html" (relative paths go to the workspace), then open it with open, then reply in one or two sentences with what you made and the exact folder path. For files the user names (e.g. “create index.html”), create exactly that name with the requested content.',
   'RUNNING A PROJECT: call inspect_project first, then run the install command it reports (if any) and the run command with run_command (background=true for servers), then open the URL or file it reports, and report the real outcome including errors. OPENING A PROJECT: use open_project.',
-  'COMMANDS: use run_command only when a command is really needed — never to create or edit files (use create_file / edit_file). Pick shell="cmd" for Command Prompt syntax. Installs, scripts and changes ask the user for approval automatically; you can’t approve anything yourself. If a result is denied, expired or blocked, stop that operation and tell the user plainly what didn’t happen. If a command failed, read its output and fix the cause or explain it.',
+  'CONTROLLING THE PC: always prefer a dedicated tool over a command. Closing apps/windows/tabs → close_app ("close notepad" → name "notepad"; "close all tabs" / "close my browser" → name "browser"; "close everything" → "all apps"). Close only the current tab → press_keys "ctrl+w" with app set. Minimise/maximise/switch/show desktop → window. Shortcuts → press_keys. Lock, sleep, dark mode, brightness, Settings pages, shutdown/restart → pc_settings. Volume and music → media_control. Opening apps → launch_app; files, folders and websites → open. Not sure what’s open → list_open_apps. Act straight away; don’t ask for confirmation for these.',
+  'COMMANDS: use run_command only when no tool fits — never to create or edit files (use create_file / edit_file) and never for things the tools above do. The default shell is Windows PowerShell 5.1: chain with ";" (NOT "&&" or "||"), use cmdlets (Get-ChildItem, Get-Process, Test-Path, Copy-Item), quote paths with spaces in single quotes, and don’t use bash syntax (ls -la, rm -rf, grep, export, sudo). For Command Prompt syntax (dir /b, &&, set X=1) pass shell="cmd". Run one clear command per call and check its result before the next. Installs, scripts and changes ask the user for approval automatically; you can’t approve anything yourself. If a result is denied, expired or blocked, stop that operation and tell the user plainly what didn’t happen. If a command failed, read its output and fix the cause or explain it.',
   `Folders: home ${HOME}; Downloads ${KNOWN.downloads}; Desktop ${KNOWN.desktop}; when no project is selected new work goes in ${PROJECTS_DIR}. Call get_workspace if you need to know where things go.`,
   'For questions about current facts, news, prices or anything you are unsure of, use web_search instead of guessing. Use play_media / media_control for music and videos, camera to look through the webcam, weather, system_status, set_timer and clipboard when they fit.',
   'Ask one short clarifying question only when an essential detail is missing and can’t be reasonably assumed. Otherwise pick sensible defaults and proceed.',

@@ -58,6 +58,7 @@ import { TerminalService, type Notify, type TerminalState } from './terminal'
 import { ApprovalService, type RulesState } from './approvals'
 import type { CommandContext } from './commandRisk'
 import { PROJECTS_DIR, resolveUserPath } from '../voice/desktopTools'
+import { pcControl } from '../tools/pcControl'
 import { WindowsInfo } from './windowsInfo'
 import { friendlyError, VoiceEngine, type VoiceConfig } from '../voice/engine'
 import { TextAgent } from '../voice/textAgent'
@@ -778,6 +779,11 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   async function startup() {
     importGeminiKey()
     voice.refresh()
+    // Start the PC-control helper now so the first "close notepad" is instant.
+    pcControl.warm()
+    // Keep the voice context warm so a wake word connects without extra lookups.
+    const warmCtx = setInterval(() => voice.prefetchContext(), 60_000)
+    warmCtx.unref?.()
     const qaPrompt = process.env['ZVYRA_QA_AGENT_PROMPT']
     if (qaPrompt && !ctx.isPackaged) {
       // Dev-only: run one typed command through the desktop agent and log the outcome.
@@ -1304,6 +1310,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     },
     async dispose() {
       voice.dispose()
+      pcControl.dispose()
       scheduler.stop()
       terminal.killAll()
       windows.dispose()

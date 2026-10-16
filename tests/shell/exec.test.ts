@@ -64,6 +64,17 @@ describe.runIf(win)('command execution (Windows)', () => {
     expect(multi.stdout).toContain('hi there')
   }, 70_000)
 
+  it('respects -ErrorAction SilentlyContinue instead of reporting a failure', async () => {
+    const r = await runCommand({ shell: 'powershell', command: "Get-Process -Name 'zvyra-no-such-process' -ErrorAction SilentlyContinue; Write-Output 'still fine'", cwd: base, timeoutMs: 30_000 })
+    expect(r.exitCode).toBe(0)
+    expect(r.stdout).toContain('still fine')
+  }, 40_000)
+
+  it('passes values through environment variables (no string interpolation)', async () => {
+    const r = await runCommand({ shell: 'powershell', command: 'Write-Output $env:ZVYRA_ARG', cwd: base, timeoutMs: 30_000, env: { ZVYRA_ARG: "it's \"quoted\" & $(not run)" } })
+    expect(r.stdout.trim()).toBe("it's \"quoted\" & $(not run)")
+  }, 40_000)
+
   it('never waits on stdin prompts', async () => {
     const r = await runCommand({ shell: 'cmd', command: 'set /p NAME=Your name: & echo done', cwd: base, timeoutMs: 20_000 })
     expect(r.status).toBe('exited')

@@ -124,6 +124,7 @@ export class VoiceEngine {
   private awaitingReply = false
   private awaitTimer: NodeJS.Timeout | null = null
   private toolsRunning = 0
+  private wakeAt = 0
 
   constructor(private readonly d: VoiceEngineDeps) {}
 
@@ -574,11 +575,13 @@ export class VoiceEngine {
     } else if (this.capturing && this.captureDevice !== cfg.micDeviceId) {
       this.cmd({ type: 'start', deviceId: cfg.micDeviceId }) // device changed
     }
+    if (this.phase === 'standby') this.prefetchContext()
     this.publish()
   }
 
   private onWake() {
     this.d.logger.info('voice', 'wake word detected')
+    this.wakeAt = Date.now()
     this.d.activity('voice.wake', 'Wake word detected', '“Hey Zvyra”')
     this.cmd({ type: 'chime', kind: 'wake' })
     void this.converse('wake')
@@ -612,16 +615,51 @@ export class VoiceEngine {
       return
     }
     this.phase = 'listening'
-    this.d.logger.info('voice', 'conversation open', { model: this.d.getConfig().model, voice: this.d.getConfig().voice, preRollFrames: this.preRoll.length })
+    this.d.logger.info('voice', 'conversation open', { model: this.d.getConfig().model, voice: this.d.getConfig().voice, preRollFrames: this.preRoll.length, ms: this.wakeAt ? Date.now() - this.wakeAt : undefined })
+    this.wakeAt = 0
     for (const f of this.preRoll) this.send(f)
     this.preRoll = []
     this.touch()
     this.publish()
   }
 
+  /*
+   * System context (date, name, workspace, pinned memories) is fetched ahead of
+   * time and refreshed in the background, so a wake word doesn't wait on three
+   * backend lookups before it can even start connecting.
+   */
+  private ctxCache: { text: string; at: number } | null = null
+  private ctxLoading: Promise<string> | null = null
+  private loadContext(): Promise<string> {
+    if (!this.ctxLoading) {
+      this.ctxLoading = this.d.tools
+        .systemContext()
+        .catch(() => '')
+        .then((text) => {
+          this.ctxCache = { text, at: Date.now() }
+          return text
+        })
+        .finally(() => (this.ctxLoading = null))
+    }
+    return this.ctxLoading
+  }
+  /** Warm the context cache (called while waiting for the wake word). */
+  prefetchContext() {
+    if (!this.ctxCache || Date.now() - this.ctxCache.at > 60_000) void this.loadContext()
+  }
+  private async contextNow(): Promise<string> {
+    const c = this.ctxCache
+    if (c && Date.now() - c.at < 5 * 60_000) {
+      if (Date.now() - c.at > 30_000) void this.loadContext()
+      // The clock line must be current even when the rest is cached.
+      return c.text.replace(/^Current date and time: [^\n]*/, `Current date and time: ${new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`)
+    }
+    return this.loadContext()
+  }
+
   private async buildConfig(): Promise<LiveConnectConfig> {
     const cfg = this.d.getConfig()
-    const ctx = await this.d.tools.systemContext().catch(() => '')
+    const ctx = await this.contextNow()
     const pace = cfg.speakingRate >= 1.25 ? ' Speak at a brisk pace.' : cfg.speakingRate <= 0.8 ? ' Speak slowly and clearly.' : ''
     const c: LiveConnectConfig = {
       responseModalities: [Modality.AUDIO],
@@ -664,6 +702,8 @@ export class VoiceEngine {
     const config = await this.buildConfig()
     const model = this.d.getConfig().model
     let opened = false
+    let setupDone = false
+    let onSetup: (() => void) | null = null
     let closeReason = ''
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Timed out connecting to Gemini Live')), 15000)
@@ -675,7 +715,14 @@ export class VoiceEngine {
             onopen: () => {
               opened = true
             },
-            onmessage: (m) => id === this.sessionId && this.onMessage(m),
+            onmessage: (m) => {
+              // The server confirms the config with setupComplete: that's the moment audio can flow.
+              if (m.setupComplete && !setupDone) {
+                setupDone = true
+                onSetup?.()
+              }
+              if (id === this.sessionId) this.onMessage(m)
+            },
             onerror: (e) => {
               closeReason = (e as { message?: string }).message ?? 'connection error'
             },
@@ -694,8 +741,15 @@ export class VoiceEngine {
               return resolve()
             }
             this.session = s
-            // A config the model rejects closes the socket right away; detect that.
-            setTimeout(() => (this.session === s && opened ? resolve() : reject(new Error(closeReason || 'Gemini Live closed the session'))), 400)
+            // A config the model rejects closes the socket right away. Ready = setupComplete
+            // (usually well under 400 ms); the old fixed 400 ms wait stays only as a fallback.
+            const check = () => (this.session === s && opened ? resolve() : reject(new Error(closeReason || 'Gemini Live closed the session')))
+            if (setupDone) return check()
+            const fallback = setTimeout(check, 400)
+            onSetup = () => {
+              clearTimeout(fallback)
+              check()
+            }
           },
           (err) => {
             clearTimeout(timer)
@@ -905,6 +959,7 @@ export class VoiceEngine {
     const cfg = this.d.getConfig()
     this.phase = cfg.wakeEnabled ? 'standby' : 'off'
     this.spotter?.reset()
+    if (this.phase === 'standby') this.prefetchContext()
     if (this.phase === 'off') this.stopCapture()
     if (wasActive && why !== 'cancel') this.cmd({ type: 'chime', kind: 'sleep' })
     this.d.emit('voice.level', { level: 0 })
