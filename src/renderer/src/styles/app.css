@@ -22,12 +22,21 @@ body[data-window='main'] {
   overflow: hidden;
 }
 .app::before {
-  /* soft static sheen (the old 18 s full-window drift loop cost GPU time for nothing) */
+  /* soft moving sheen */
   content: '';
   position: absolute;
   inset: -20%;
-  background: radial-gradient(40% 30% at 50% 50%, rgba(120, 170, 255, 0.08), transparent 70%);
+  background: radial-gradient(40% 30% at 50% 50%, rgba(120, 170, 255, 0.10), transparent 70%);
+  animation: app-sheen 18s ease-in-out infinite alternate;
   pointer-events: none;
+}
+@keyframes app-sheen {
+  from {
+    transform: translate(-12%, -8%);
+  }
+  to {
+    transform: translate(14%, 10%);
+  }
 }
 .app > * {
   position: relative;

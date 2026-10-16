@@ -20,6 +20,7 @@ import { deriveIslandVisual, ISLAND_SIZES, surfaceHeight, visualGroup, type Isla
 import { setState, useStore } from '../lib/store'
 import { attempt, goTo } from '../lib/useAction'
 import { ZMark } from '../components/brand'
+import { Pet } from '../components/Pet'
 import { PermissionCard } from '../components/PermissionCard'
 import { PlanSteps, TaskProgress, TaskStatusBadge } from '../components/TaskBits'
 import { HelixWave } from '../components/HelixWave'
@@ -184,19 +185,39 @@ function Surface({
   const size = ISLAND_SIZES[visual]
   const height = surfaceHeight(visual, measured)
   const rawLevel = useStore((s) => s.voiceLevel)
-  // Glass edge brightens only with real audio (user speaking or ZVYRA speaking).
-  const lvl = visual === 'speech' || visual === 'speaking' ? Math.min(1, rawLevel) : 0
+  // Edge glow follows the real audio level (mic while listening, ZVYRA's voice while speaking).
+  const lvl = visual === 'listening' || visual === 'speech' || visual === 'speaking' ? Math.min(1, rawLevel) : 0
+  const noticeBad = useStore((s) => s.notices[0]?.kind === 'error' || s.notices[0]?.kind === 'denied')
+  const glow =
+    visual === 'camera'
+      ? 'cam'
+      : visual === 'listening' || visual === 'speech'
+        ? 'listen'
+        : visual === 'processing'
+          ? 'think'
+          : visual === 'speaking'
+            ? 'speak'
+            : visual === 'tool' && tools.some((t) => t.status === 'running')
+              ? 'tool'
+              : visual === 'working'
+                ? 'work'
+                : visual === 'approval'
+                  ? 'warn'
+                  : visual === 'notice' && noticeBad
+                    ? 'error'
+                    : 'none'
   const onMouseDown = useDrag(visual === 'idle' ? onExpand : visual === 'mini' ? () => setMode('compact') : () => undefined)
   const inVoice = group === 'voice'
 
   return (
     <div
-      className={`di v-${visual} g-${group}`}
+      className={`di v-${visual} g-${group} glow-${glow}`}
       style={{ width: size.w, height, borderRadius: size.r, ['--lvl' as string]: lvl.toFixed(2) }}
       onMouseDown={onMouseDown}
       role="region"
       aria-label="ZVYRA Dynamic Island"
     >
+      <span className="di-glow" aria-hidden="true" />
       {/* One fade per state group; states inside a group (listening → speaking) update in place. */}
       <div className="di-body" key={group}>
         <div ref={bodyRef} className="di-measure">
@@ -286,18 +307,12 @@ function VoiceContent({ visual }: { visual: IslandVisual }) {
   return (
     <div className={`di-voice s-${visual}`}>
       <div className="di-row">
-        <span className={`di-mic s-${visual}`} aria-hidden="true">
-          <Mic />
-        </span>
+        <Pet state={visual === 'processing' ? 'thinking' : visual === 'speaking' ? 'speaking' : 'listening'} size={34} level={level} />
         <span className="di-voice-label" aria-live="polite">
           {label}
         </span>
         <span className="di-voice-indicator">
-          {visual === 'processing' ? (
-            <ProcessingDots label="Thinking" />
-          ) : (
-            <HelixWave level={visual === 'speech' || visual === 'speaking' ? level : 0} active={visual === 'speech' || visual === 'speaking'} width={80} height={22} tone={visual === 'speaking' ? 'speak' : 'listen'} />
-          )}
+          <HelixWave level={visual === 'processing' ? 0.2 : level} active width={110} height={30} tone={visual === 'speaking' ? 'speak' : visual === 'processing' ? 'think' : 'listen'} />
         </span>
         <button type="button" className="di-icon xs stop no-drag" onClick={() => void attempt(() => call('voice.stopListening'))} aria-label="End conversation" title="End conversation">
           <Square />

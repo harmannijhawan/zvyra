@@ -1,14 +1,11 @@
 /**
  * OWNER: Kiro. Dynamic Island live surfaces:
- *  - ToolCard: calm cards for research, media, builds, weather, PC status…
- *    (icon, label, subject, elapsed time, steps, result, sources)
- *  - CameraContent: the webcam preview, which also answers main's capture
- *    requests with a still frame.
- * Motion is limited to a short fade-in per card; there are no looping
- * decorations. Running state is shown by a small progress indicator.
+ *  - ToolCard: animated cards for research, media, builds, weather, PC status…
+ *  - CameraContent: the webcam preview (iris-open reveal, HUD, scan, capture flash)
+ *    which also answers main's capture requests with a still frame.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Check, CloudSun, Cpu, Globe, Hammer, Music, Radar, Sparkles, Timer, TriangleAlert, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Aperture, Camera, Check, CloudSun, Cpu, Globe, Hammer, Music, Radar, Sparkles, Timer, TriangleAlert, X } from 'lucide-react'
 import type { ToolActivity, ToolKind } from '@shared/contract'
 import { call, errorMessage } from '../lib/client'
 import { useStore } from '../lib/store'
@@ -52,12 +49,16 @@ const hostOf = (url: string) => {
     return url
   }
 }
+const hueOf = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7)
 
-function ToolIcon({ kind, status }: { kind: ToolKind; status: ToolActivity['status'] }) {
+function ToolOrb({ kind, status }: { kind: ToolKind; status: ToolActivity['status'] }) {
   const Icon = status === 'error' ? TriangleAlert : status === 'done' && kind !== 'media' ? Check : ICON[kind]
   return (
-    <span className={`tc-icon s-${status}`} aria-hidden="true">
-      <Icon />
+    <span className={`tc-orb k-${kind} s-${status}`} aria-hidden="true">
+      <span className="tc-orb-ring" />
+      <span className="tc-orb-ping" />
+      <span className="tc-orb-ping two" />
+      <Icon className="tc-orb-icon" key={status} />
     </span>
   )
 }
@@ -72,34 +73,48 @@ function Elapsed({ since }: { since: string }) {
   return <span className="tc-time">{s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`}</span>
 }
 
-export function ToolCard({ a, onDismiss }: { a: ToolActivity; index?: number; onDismiss?: (id: string) => void }) {
+function Equalizer() {
+  return (
+    <span className="tc-eq" aria-hidden="true">
+      {Array.from({ length: 14 }, (_, i) => (
+        <i key={i} style={{ '--i': i } as CSSProperties} />
+      ))}
+    </span>
+  )
+}
+
+export function ToolCard({ a, index = 0, onDismiss }: { a: ToolActivity; index?: number; onDismiss?: (id: string) => void }) {
   const running = a.status === 'running'
   const sources = a.sources ?? []
   return (
-    <div className={`tc k-${a.kind} s-${a.status}`} role="status" aria-live="polite">
+    <div className={`tc k-${a.kind} s-${a.status}`} style={{ '--i': index } as CSSProperties} role="status" aria-live="polite">
       <div className="tc-head">
-        <ToolIcon kind={a.kind} status={a.status} />
+        <ToolOrb kind={a.kind} status={a.status} />
         <div className="tc-text">
-          <div className="tc-label">{a.label}</div>
-          {a.subject && <div className="tc-subject">{a.subject}</div>}
+          <div className="tc-label">
+            {a.label}
+            {running && (
+              <span className="tc-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            )}
+          </div>
+          {a.subject && <div className={`tc-subject ${running ? 'shimmer' : ''}`}>{a.subject}</div>}
         </div>
-        {running ? (
-          <>
-            <span className="di-dots sm" role="progressbar" aria-label="Working">
-              <i />
-              <i />
-              <i />
-            </span>
-            <Elapsed since={a.startedAt} />
-          </>
-        ) : (
-          onDismiss && (
-            <button type="button" className="di-icon xs no-drag" onClick={() => onDismiss(a.id)} aria-label="Dismiss" title="Dismiss">
-              <X />
-            </button>
-          )
+        {running ? <Elapsed since={a.startedAt} /> : onDismiss && (
+          <button type="button" className="di-icon sm no-drag" onClick={() => onDismiss(a.id)} aria-label="Dismiss" title="Dismiss">
+            <X />
+          </button>
         )}
       </div>
+
+      {running && (
+        <div className="tc-beam" aria-hidden="true">
+          <span />
+        </div>
+      )}
 
       {a.kind === 'build' && !!a.steps?.length && (
         <ol className="tc-steps">
@@ -112,15 +127,21 @@ export function ToolCard({ a, onDismiss }: { a: ToolActivity; index?: number; on
         </ol>
       )}
 
-      {a.summary && (!running || a.kind === 'build') && <div className={`tc-summary selectable ${a.status === 'error' ? 'error' : ''} ${running ? 'meta' : ''}`}>{a.summary}</div>}
+      {a.kind === 'media' && a.status === 'done' && a.tool === 'play_media' && <Equalizer />}
+
+      {a.summary && (!running || a.kind === 'build') && (
+        <div className={`tc-summary selectable ${a.status === 'error' ? 'error' : ''} ${running ? 'meta' : 'reveal'}`} key={a.status}>
+          {a.summary}
+        </div>
+      )}
 
       {!!sources.length && (
         <div className="tc-sources no-drag">
-          {sources.slice(0, 6).map((s) => {
+          {sources.slice(0, 6).map((s, i) => {
             const h = hostOf(s.url)
             const name = s.title && s.title.length < 40 ? s.title : h
             return (
-              <a key={s.url} className="tc-src" href={s.url} target="_blank" rel="noreferrer" title={s.url}>
+              <a key={s.url} className="tc-src" href={s.url} target="_blank" rel="noreferrer" title={s.url} style={{ '--i': i, '--h': hueOf(name) } as CSSProperties}>
                 <span className="tc-fav">{name.replace(/^www\./, '').charAt(0).toUpperCase()}</span>
                 <span className="tc-src-name">{name}</span>
               </a>
@@ -167,6 +188,7 @@ export function CameraContent({ inVoice }: { inVoice: boolean }) {
   const handled = useRef<string | null>(null)
   const [phase, setPhase] = useState<'starting' | 'live' | 'error'>('starting')
   const [error, setError] = useState<string | null>(null)
+  const [flash, setFlash] = useState(0)
   const [res, setRes] = useState('')
 
   useEffect(() => {
@@ -195,7 +217,7 @@ export function CameraContent({ inVoice }: { inVoice: boolean }) {
     }
   }, [])
 
-  // Main asked for a still: wait for a warmed-up frame and send it back.
+  // Main asked for a still: wait for a warmed-up frame, flash, send it back.
   useEffect(() => {
     const id = cam.captureId
     if (!id || handled.current === id) return
@@ -217,6 +239,7 @@ export function CameraContent({ inVoice }: { inVoice: boolean }) {
         c.width = Math.round(v.videoWidth * scale)
         c.height = Math.round(v.videoHeight * scale)
         c.getContext('2d')!.drawImage(v, 0, 0, c.width, c.height)
+        setFlash((f) => f + 1)
         await call('camera.frame', { captureId: id, dataUrl: c.toDataURL('image/jpeg', 0.82) })
       } catch (err) {
         await call('camera.frame', { captureId: id, error: errorMessage(err) }).catch(() => undefined)
@@ -227,8 +250,8 @@ export function CameraContent({ inVoice }: { inVoice: boolean }) {
   const look = tools.find((t) => t.kind === 'camera')
   const looking = look?.status === 'running'
   const vs = voice?.state
-  const title = inVoice ? (vs === 'speaking' ? 'Speaking' : vs === 'transcribing' ? 'Thinking' : 'Listening') : 'Camera'
-  const sub = phase === 'error' ? 'Camera unavailable' : phase === 'starting' ? 'Starting the camera…' : looking ? 'Looking…' : `Live${res ? ` · ${res}` : ''}`
+  const title = inVoice ? (vs === 'speaking' ? 'Speaking' : vs === 'transcribing' ? 'Thinking…' : 'Listening') : 'Camera'
+  const sub = phase === 'error' ? 'Camera unavailable' : phase === 'starting' ? 'Opening the lens…' : looking ? 'Looking…' : `Live${res ? ` · ${res}` : ''}`
 
   return (
     <div className={`di-cam ph-${phase} ${looking ? 'looking' : ''}`}>
@@ -242,8 +265,10 @@ export function CameraContent({ inVoice }: { inVoice: boolean }) {
             {sub}
           </div>
         </div>
-        {inVoice && <HelixWave level={vs === 'speaking' || voice?.userSpeaking ? level : 0} active={vs === 'speaking' || !!voice?.userSpeaking} width={64} height={18} tone={vs === 'speaking' ? 'speak' : 'listen'} />}
-        <button type="button" className="di-icon xs stop no-drag" onClick={() => void call('camera.close').catch(() => undefined)} aria-label="Turn camera off" title="Turn camera off">
+        {inVoice && (
+          <HelixWave level={vs === 'speaking' ? Math.max(level, 0.25) : level} active width={86} height={30} tone={vs === 'speaking' ? 'speak' : vs === 'transcribing' ? 'think' : 'listen'} />
+        )}
+        <button type="button" className="di-icon stop no-drag" onClick={() => void call('camera.close').catch(() => undefined)} aria-label="Turn camera off" title="Turn camera off">
           <X />
         </button>
       </div>
@@ -261,16 +286,39 @@ export function CameraContent({ inVoice }: { inVoice: boolean }) {
             setPhase('live')
           }}
         />
+        <span className="cam-aperture" aria-hidden="true" />
+        <span className="cam-grid" aria-hidden="true" />
+        <span className="cam-scan" aria-hidden="true" />
+        <span className="cam-corner tl" aria-hidden="true" />
+        <span className="cam-corner tr" aria-hidden="true" />
+        <span className="cam-corner bl" aria-hidden="true" />
+        <span className="cam-corner br" aria-hidden="true" />
         {phase === 'live' && (
           <span className="cam-live">
             <i />
             LIVE
           </span>
         )}
+        {phase === 'starting' && (
+          <span className="cam-boot" aria-hidden="true">
+            <Aperture />
+          </span>
+        )}
+        {looking && (
+          <span className="cam-analyze" aria-hidden="true">
+            <span className="cam-reticle" />
+            <span className="cam-sweep" />
+          </span>
+        )}
+        {flash > 0 && <span key={flash} className="cam-flash" aria-hidden="true" />}
         {phase === 'error' && <div className="cam-error">{error}</div>}
       </div>
 
-      {look && look.status !== 'running' && look.summary && <div className={`cam-caption selectable ${look.status === 'error' ? 'error' : ''}`}>{look.summary}</div>}
+      {look && look.status !== 'running' && look.summary && (
+        <div className={`cam-caption selectable reveal ${look.status === 'error' ? 'error' : ''}`} key={look.updatedAt}>
+          {look.summary}
+        </div>
+      )}
     </div>
   )
 }
