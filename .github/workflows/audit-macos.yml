@@ -1,0 +1,32 @@
+name: Audit published macOS packages
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  startup:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+            archive: ZVYRA-0.1.0-arm64-mac.zip
+          - runner: macos-15-intel
+            arch: x64
+            archive: ZVYRA-0.1.0-mac.zip
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the published app
+        run: |
+          curl --fail --location --retry 3 --output app.zip "https://github.com/${{ github.repository }}/releases/download/v0.1.0-macos/${{ matrix.archive }}"
+          ditto -x -k app.zip published
+      - name: Check native modules and launch the published app
+        run: python3 scripts/audit-macos-package.py published/ZVYRA.app audit-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-audit-${{ matrix.arch }}
+          path: audit-output/
