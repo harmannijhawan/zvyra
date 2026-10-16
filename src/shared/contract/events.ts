@@ -17,6 +17,7 @@ import type {
   ComputerAction,
   ComputerStatus,
   Conversation,
+  DesktopToast,
   Interaction,
   PermissionRequest,
   Project,
@@ -39,7 +40,11 @@ export interface ZvyraEventMap {
   'task.event': TaskEvent
   'task.removed': { id: string }
   'permission.requested': PermissionRequest
-  'permission.resolved': { id: string; decision: 'allow_once' | 'allow_task' | 'deny' | 'expired' }
+  'permission.resolved': { id: string; decision: 'allow_once' | 'allow_task' | 'allow_always' | 'deny' | 'expired' }
+  /** (1.4.0) A right-side desktop notification. */
+  'desktop.toast': DesktopToast
+  /** (1.4.0) Dismiss a desktop notification (e.g. the approval was answered elsewhere). */
+  'desktop.toastDismiss': { id: string }
   'chat.conversation': Conversation
   'chat.conversationRemoved': { id: string }
   'chat.message': ChatMessage

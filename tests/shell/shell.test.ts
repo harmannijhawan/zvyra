@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { METHOD_NAMES } from '../../src/shared/contract'
 import { ISLAND_SIZE, SHELL_METHOD_NAMES } from '../../src/shared/shell'
-import { anchorFromBounds, boundsForMode, defaultAnchor } from '../../src/main/shell/islandGeometry'
+import { anchorFromBounds, boundsForMode, defaultAnchor, dockedBounds } from '../../src/main/shell/islandGeometry'
 import { renderZIcon } from '../../src/main/shell/iconRaster'
 
 const work = { x: 0, y: 0, width: 1920, height: 1040 }
@@ -13,7 +13,20 @@ describe('island geometry', () => {
     const mini = boundsForMode(a, 'mini', work).bounds
     expect(compact.x + compact.width / 2).toBe(960)
     expect(mini.x + mini.width / 2).toBe(960)
-    expect(compact.y).toBe(10)
+    expect(compact.y).toBe(0)
+  })
+
+  it('docks the window to the exact top centre of any display', () => {
+    const b = dockedBounds(work)
+    expect(b.y).toBe(0)
+    expect(b.x + b.width / 2).toBe(960)
+    // Second monitor with a top offset and odd width (e.g. 125 % scaling → 1536 DIPs).
+    const second = { x: 1920, y: 40, width: 1537, height: 824 }
+    const s = dockedBounds(second)
+    expect(s.y).toBe(40)
+    expect(Number.isInteger(s.x)).toBe(true)
+    expect(Math.abs(s.x + s.width / 2 - (1920 + 1537 / 2))).toBeLessThanOrEqual(0.5)
+    expect(s.height).toBeLessThanOrEqual(second.height)
   })
 
   it('expands downward with room, upward near the bottom edge', () => {

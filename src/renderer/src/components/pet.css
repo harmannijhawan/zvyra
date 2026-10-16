@@ -1,4 +1,9 @@
-/* Companion animation states. Kept subtle: transforms + opacity only (GPU-friendly). */
+/*
+ * Companion states. Calm by design: the expression and accent colour show the
+ * state; the only motion comes from the real microphone / voice level (--lvl)
+ * and short one-off transitions. The old idle float, blinking, head tilts,
+ * ear waves, sparkles, popping "?" and floating "z" loops were removed.
+ */
 
 .pet {
   --pet-eye: #8eeaff;
@@ -25,182 +30,59 @@
   transform-origin: center;
 }
 .pet .pet-aura {
-  opacity: 0.35;
-  transition: opacity 0.4s;
+  opacity: 0.3;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.pet .pet-eyes {
+  transition: transform 0.3s var(--ease);
 }
 
-/* idle — gentle float + blink */
-.pet .pet-float {
-  animation: pet-float 4.2s ease-in-out infinite;
-}
-.pet .pet-shadow {
-  animation: pet-shadow 4.2s ease-in-out infinite;
-}
-.pet .pet-eyes.open .pet-eye {
-  animation: pet-blink 5.5s infinite;
-}
-@keyframes pet-float {
-  50% {
-    transform: translateY(-3px);
-  }
-}
-@keyframes pet-shadow {
-  50% {
-    transform: scaleX(0.85);
-    opacity: 0.22;
-  }
-}
-@keyframes pet-blink {
-  0%,
-  92%,
-  100% {
-    transform: scaleY(1);
-  }
-  95% {
-    transform: scaleY(0.1);
-  }
-}
-
-/* listening — attentive, audio-reactive aura and eyes */
+/* listening: aura follows the real microphone level */
 .pet[data-state='listening'] {
-  --pet-aura: #3cc8ff;
+  --pet-aura: #3c8bff;
 }
 .pet[data-state='listening'] .pet-aura {
-  opacity: calc(0.4 + var(--lvl) * 0.6);
-  transform: scale(calc(0.92 + var(--lvl) * 0.16));
-  transition: transform 0.08s linear, opacity 0.08s linear;
-}
-.pet[data-state='listening'] .pet-head {
-  animation: pet-tilt 3s ease-in-out infinite;
+  opacity: calc(0.35 + var(--lvl) * 0.5);
+  transform: scale(calc(0.94 + var(--lvl) * 0.12));
+  transition: transform 0.09s linear, opacity 0.09s linear;
 }
 .pet[data-state='listening'] .pet-eyes .pet-eye {
-  transform: scale(1.12);
-  animation: none;
+  transform: scale(1.08);
 }
-.pet .pet-ears-wave path {
-  opacity: 0;
-  animation: pet-wave 1.4s ease-out infinite;
-}
-.pet .pet-ears-wave .w2 {
-  animation-delay: 0.35s;
-}
-@keyframes pet-wave {
-  30% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-@keyframes pet-tilt {
-  0%,
-  100% {
-    transform: rotate(-2deg);
-  }
-  50% {
-    transform: rotate(2deg);
-  }
+.pet .pet-ears-wave {
+  display: none;
 }
 
-/* thinking — eyes look up, thought dots */
-.pet[data-state='thinking'] .pet-eyes {
+/* thinking / planning: eyes look up, static accent */
+.pet[data-state='thinking'] .pet-eyes,
+.pet[data-state='planning'] .pet-eyes {
   transform: translate(2px, -3px);
-  transition: transform 0.4s var(--ease);
-}
-.pet[data-state='thinking'] .pet-eyes .pet-eye {
-  animation: pet-blink 3.5s infinite;
 }
 .pet .pet-thought circle {
-  opacity: 0.2;
-  animation: pet-dot 1.4s ease-in-out infinite;
-}
-.pet .pet-thought circle:nth-child(2) {
-  animation-delay: 0.2s;
-}
-.pet .pet-thought circle:nth-child(3) {
-  animation-delay: 0.4s;
-}
-@keyframes pet-dot {
-  40% {
-    opacity: 1;
-  }
+  opacity: 0.55;
 }
 
-/* planning — eyes scan side to side, list lines draw */
-.pet[data-state='planning'] .pet-eyes {
-  animation: pet-scan 2.4s ease-in-out infinite;
-}
-.pet .pet-plan path {
-  stroke-dasharray: 14;
-  animation: pet-draw 2.4s ease-in-out infinite;
-}
-@keyframes pet-scan {
-  0%,
-  100% {
-    transform: translateX(-3px);
-  }
-  50% {
-    transform: translateX(3px);
-  }
-}
-@keyframes pet-draw {
-  0% {
-    stroke-dashoffset: 14;
-    opacity: 0.3;
-  }
-  50%,
-  100% {
-    stroke-dashoffset: 0;
-    opacity: 1;
-  }
-}
-
-/* speaking — mouth moves */
+/* speaking: mouth opens with ZVYRA's real output level */
 .pet[data-state='speaking'] {
   --pet-aura: #4a8bff;
 }
 .pet[data-state='speaking'] .pet-aura {
-  opacity: 0.55;
-}
-.pet .pet-mouth {
-  animation: pet-talk 0.34s ease-in-out infinite alternate;
-}
-@keyframes pet-talk {
-  from {
-    transform: scaleY(0.6) scaleX(0.9);
-  }
-  to {
-    transform: scaleY(2.1) scaleX(1.05);
-  }
-}
-
-/* executing — focused eyes, quicker bob, pulsing core */
-.pet[data-state='executing'] .pet-float {
-  animation: pet-bob 1.2s ease-in-out infinite;
-}
-.pet[data-state='executing'] .pet-eyes .pet-eye {
-  transform: scaleY(0.72);
-  animation: none;
-}
-.pet[data-state='executing'] .pet-core,
-.pet[data-state='executing'] .pet-antenna {
-  animation: pet-pulse 0.9s ease-in-out infinite;
-}
-.pet[data-state='executing'] .pet-aura {
   opacity: 0.5;
 }
-@keyframes pet-bob {
-  50% {
-    transform: translateY(-2px) rotate(-1deg);
-  }
-}
-@keyframes pet-pulse {
-  50% {
-    opacity: 0.35;
-  }
+.pet .pet-mouth {
+  transform: scaleY(calc(0.7 + var(--lvl) * 1.4));
+  transition: transform 0.09s linear;
 }
 
-/* waiting for permission — amber antenna, head tilt */
+/* executing: focused eyes */
+.pet[data-state='executing'] .pet-eyes .pet-eye {
+  transform: scaleY(0.72);
+}
+.pet[data-state='executing'] .pet-aura {
+  opacity: 0.45;
+}
+
+/* waiting for permission: amber antenna, slight head tilt */
 .pet[data-state='waiting_permission'] {
   --pet-antenna: #ffc561;
   --pet-aura: #f3b64b;
@@ -209,71 +91,27 @@
   transform: rotate(-5deg);
   transform-origin: 50% 80%;
 }
-.pet[data-state='waiting_permission'] .pet-antenna {
-  animation: pet-pulse 1.2s ease-in-out infinite;
-}
-.pet .pet-q {
-  animation: pet-pop 1.6s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: center;
-}
 
-/* completed — brief hop + sparkle */
+/* completed: green accent, no sparkles */
 .pet[data-state='completed'] {
   --pet-aura: #33d17a;
   --pet-antenna: #7ff0b0;
 }
-.pet[data-state='completed'] .pet-float {
-  animation: pet-hop 0.7s var(--ease-spring) 2;
-}
-.pet .pet-sparkle path {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: pet-pop 0.9s ease-out infinite;
-}
-.pet .pet-sparkle path:nth-child(2) {
-  animation-delay: 0.3s;
-}
-@keyframes pet-hop {
-  40% {
-    transform: translateY(-7px);
-  }
-}
-@keyframes pet-pop {
-  0%,
-  100% {
-    transform: scale(0.7);
-    opacity: 0.5;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
+.pet .pet-sparkle {
+  display: none;
 }
 
-/* error — calm red, slight droop */
+/* error: calm red */
 .pet[data-state='error'] {
   --pet-eye: #ff8f99;
   --pet-antenna: #ff6b78;
   --pet-aura: #ff5f6d;
 }
 .pet[data-state='error'] .pet-float {
-  animation: none;
   transform: translateY(1px);
 }
-.pet[data-state='error'] .pet-head {
-  animation: pet-shake 0.5s ease-in-out 1;
-}
-@keyframes pet-shake {
-  25% {
-    transform: translateX(-2px);
-  }
-  75% {
-    transform: translateX(2px);
-  }
-}
 
-/* offline — desaturated, still */
+/* offline: desaturated */
 .pet[data-state='offline'] {
   --pet-eye: #7d8aa8;
   --pet-antenna: #5d6a88;
@@ -281,38 +119,18 @@
 .pet[data-state='offline'] svg {
   filter: saturate(0.35) brightness(0.85);
 }
-.pet[data-state='offline'] .pet-float,
-.pet[data-state='offline'] .pet-shadow {
-  animation: none;
-}
 .pet[data-state='offline'] .pet-aura {
   opacity: 0;
 }
 
-/* do not disturb — eyes closed, slow breathing, floating z */
+/* do not disturb: eyes closed */
 .pet[data-state='dnd'] {
   --pet-eye: #9fb6ef;
   --pet-antenna: #7c8fc4;
-}
-.pet[data-state='dnd'] .pet-float {
-  animation-duration: 6s;
 }
 .pet[data-state='dnd'] .pet-aura {
   opacity: 0.15;
 }
 .pet .pet-z {
-  animation: pet-z 3s ease-in-out infinite;
-}
-@keyframes pet-z {
-  0% {
-    opacity: 0;
-    transform: translate(0, 6px);
-  }
-  40% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(6px, -8px);
-  }
+  opacity: 0.7;
 }

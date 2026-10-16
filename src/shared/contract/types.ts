@@ -114,6 +114,11 @@ export interface VoiceStatus {
   partialTranscript?: string
   lastTranscript?: string
   error?: string
+  /**
+   * (1.4.0) True while on-device voice activity detection hears the user
+   * speaking during a conversation (drives the "speech detected" indicator).
+   */
+  userSpeaking?: boolean
 }
 
 export interface MicDevice {
@@ -290,9 +295,54 @@ export interface PermissionRequest {
   details?: { label: string; value: string }[]
   createdAt: ISODate
   expiresAt?: ISODate
+  /** (1.4.0) Exact command awaiting approval (desktop command approvals only). */
+  command?: { shell: CommandShell; text: string; cwd: string }
+  /** (1.4.0) Why approval is required, in one sentence. */
+  reason?: string
+  /** (1.4.0) Files or folders the action targets, when known. */
+  targets?: string[]
+  /** (1.4.0) Whether "Always allow" may be offered (never for high-risk actions). */
+  canAlwaysAllow?: boolean
 }
 
-export type PermissionDecision = 'allow_once' | 'allow_task' | 'deny'
+/** (1.4.0) `allow_always` saves a narrowly scoped rule (see CommandRule). */
+export type PermissionDecision = 'allow_once' | 'allow_task' | 'allow_always' | 'deny'
+
+export type CommandShell = 'powershell' | 'cmd'
+
+/**
+ * (1.4.0) A saved "Always allow" rule. It matches only the same shell, the same
+ * program, the same normalised command text and the same working folder, and
+ * only while the command still classifies at or below `risk`.
+ */
+export interface CommandRule {
+  id: string
+  shell: CommandShell
+  program: string
+  command: string
+  cwd: string
+  risk: RiskLevel
+  createdAt: ISODate
+  lastUsedAt?: ISODate
+  uses: number
+}
+
+/** (1.4.0) Right-side desktop notification raised for a real ZVYRA event. */
+export interface DesktopToast {
+  id: string
+  /** Events with the same key inside a short window are shown once. */
+  key: string
+  kind: 'approval' | 'approved' | 'denied' | 'success' | 'error' | 'file' | 'launch' | 'info'
+  title: string
+  body?: string
+  /** Short technical detail (file path, command, exit code). */
+  detail?: string
+  ts: ISODate
+  /** 0 = stays until dismissed or replaced. */
+  timeoutMs: number
+  /** Permission request this toast belongs to, so it can be cleared when answered. */
+  permissionId?: string
+}
 
 export interface PermissionPolicyEntry {
   category: PermissionCategory
@@ -491,6 +541,8 @@ export interface TerminalRun {
   finishedAt?: ISODate
   exitCode?: number | null
   status: 'awaiting_approval' | 'running' | 'exited' | 'killed' | 'denied' | 'failed'
+  /** (1.4.0) Shell the command ran in. */
+  shell?: CommandShell
 }
 
 export interface FileRoot {

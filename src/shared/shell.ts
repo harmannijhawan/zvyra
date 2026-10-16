@@ -36,6 +36,8 @@ export interface ShellMethods {
   'island.setInteractive': M<{ interactive: boolean }, void>
   /** Custom drag (lets the same surface be clicked and dragged). Window top-left in DIPs. */
   'island.moveTo': M<{ x: number; y: number; done?: boolean }, void>
+  /** Bring the island forward without stealing focus (e.g. "Review" on an approval notification). */
+  'island.reveal': M<void, IslandState>
   'main.show': M<{ route?: string }, MainWindowState>
   'main.state': M<void, MainWindowState>
   'main.minimize': M<void, MainWindowState>
@@ -51,7 +53,7 @@ export type ShellMethodName = keyof ShellMethods
 
 export const SHELL_METHOD_NAMES = [
   'island.state', 'island.setMode', 'island.show', 'island.hide', 'island.close', 'island.setAlwaysOnTop',
-  'island.resetPosition', 'island.setInteractive', 'island.moveTo', 'main.show', 'main.state', 'main.minimize', 'main.toggleMaximize', 'main.close', 'app.quit',
+  'island.resetPosition', 'island.setInteractive', 'island.moveTo', 'island.reveal', 'main.show', 'main.state', 'main.minimize', 'main.toggleMaximize', 'main.close', 'app.quit',
   'app.backendMode'
 ] as const satisfies readonly ShellMethodName[]
 
@@ -70,10 +72,15 @@ export type ShellEvent = {
 /**
  * Island window footprint in DIPs. The window keeps the expanded size at all
  * times (transparent + click-through) so every mode change is a pure CSS morph.
- * `compact.height` is the strip the resting pill occupies (used for anchoring).
+ * The island is docked to the top centre of a display; `compact.height` is the
+ * strip the resting pill occupies.
  */
 export const ISLAND_SIZE: Record<IslandMode, { width: number; height: number }> = {
-  mini: { width: 520, height: 76 },
-  compact: { width: 520, height: 76 },
+  mini: { width: 520, height: 48 },
+  compact: { width: 520, height: 48 },
   expanded: { width: 520, height: 640 }
 }
+
+/** Gap between the top edge of the display's work area and the pill (DIPs). */
+export const ISLAND_TOP_GAP = 6
+

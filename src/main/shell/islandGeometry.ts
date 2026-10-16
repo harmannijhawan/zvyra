@@ -50,6 +50,19 @@ export function boundsForMode(
   return { bounds: { x, y: Math.round(y), width: size.width, height: size.height }, direction }
 }
 
+/** Top centre of the work area, flush with its top edge (the pill keeps a small gap via CSS). */
 export function defaultAnchor(work: Rect): IslandAnchor {
-  return { centerX: work.x + work.width / 2, top: work.y + 10 }
+  return { centerX: work.x + work.width / 2, top: work.y }
 }
+
+/**
+ * The island is docked: always the top centre of one display's work area
+ * (DIPs, so Windows display scaling is handled by Electron). Rounded to whole
+ * DIPs so the window never sits on a half pixel (blurry edges / 1 px jumps).
+ */
+export function dockedBounds(work: Rect, size = ISLAND_SIZE.expanded): Rect {
+  const width = Math.min(size.width, work.width)
+  const height = Math.min(size.height, work.height)
+  return { x: Math.round(work.x + (work.width - width) / 2), y: Math.round(work.y), width, height }
+}
+

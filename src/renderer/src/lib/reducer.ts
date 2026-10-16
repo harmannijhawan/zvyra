@@ -14,6 +14,7 @@ import type {
   ComputerAction,
   ComputerStatus,
   Conversation,
+  DesktopToast,
   Interaction,
   NotificationPolicy,
   PermissionRequest,
@@ -67,6 +68,8 @@ export interface AppState {
   camera: CameraState
   setup: SetupState | null
   wakeTraining: { recording: number; templates: number } | null
+  /** Notifications shown in the Dynamic Island (newest first). */
+  notices: DesktopToast[]
 }
 
 export const initialState: AppState = {
@@ -101,7 +104,8 @@ export const initialState: AppState = {
   tools: [],
   camera: { open: false },
   setup: null,
-  wakeTraining: null
+  wakeTraining: null,
+  notices: []
 }
 
 const MAX_TASK_EVENTS = 400
@@ -153,7 +157,11 @@ export function applyEvent(s: AppState, e: ZvyraEvent): AppState {
     case 'permission.requested':
       return { ...s, permissions: upsertById(s.permissions, e.payload, false) }
     case 'permission.resolved':
-      return { ...s, permissions: s.permissions.filter((p) => p.id !== e.payload.id) }
+      return { ...s, permissions: s.permissions.filter((p) => p.id !== e.payload.id), notices: s.notices.filter((n) => n.permissionId !== e.payload.id) }
+    case 'desktop.toast':
+      return { ...s, notices: [e.payload, ...s.notices.filter((n) => n.id !== e.payload.id)].slice(0, 10) }
+    case 'desktop.toastDismiss':
+      return { ...s, notices: s.notices.filter((n) => n.id !== e.payload.id) }
     case 'chat.conversation':
       return { ...s, conversations: { ...s.conversations, [e.payload.id]: e.payload } }
     case 'chat.conversationRemoved':

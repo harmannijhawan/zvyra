@@ -944,3 +944,35 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------- calm motion
+ * Decorative loops (drifting blobs, scrolling grid, twinkling stars, floating
+ * logo, pulsing glow, spinning rings, sheen sweeps and sonar pings) are turned
+ * off. Functional motion stays: spinners while waiting, the level-driven orb,
+ * the scan bar while a key is being tested and one-off entrance transitions.
+ */
+.ob-blob,
+.ob-grid,
+.ob-logo-glow,
+.ob-z,
+.ob-ring,
+.ob-ring.r2,
+.ob-ring.r3 {
+  animation: none !important;
+}
+.ob-star {
+  animation: none !important;
+  opacity: 0.35;
+}
+.ob-orb-ring {
+  animation: none !important;
+  opacity: 0;
+}
+.ph-recording .ob-orb-ring {
+  opacity: 0.6;
+  transform: scale(1.1);
+}
+.ob-btn.primary::after {
+  animation: none !important;
+  display: none;
+}

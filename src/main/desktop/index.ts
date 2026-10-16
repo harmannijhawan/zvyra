@@ -51,10 +51,13 @@ import { AppsService, findVSCode, type AppsState } from './apps'
 import { CALLS_DEFAULT, CallService, type CallsState } from './calls'
 import { FileService, type FilesState } from './files'
 import { JsonDoc } from './jsonDoc'
-import { atLeast, debrand, inQuietHours, relevance, stripToolMarkup, toWholeHour } from './pure'
+import { atLeast, debrand, inQuietHours, isInside, relevance, stripToolMarkup, toWholeHour } from './pure'
 import { Scheduler, type SchedulerState } from './scheduler'
 import { SecretStore } from './secrets'
-import { TerminalService, type TerminalState } from './terminal'
+import { TerminalService, type Notify, type TerminalState } from './terminal'
+import { ApprovalService, type RulesState } from './approvals'
+import type { CommandContext } from './commandRisk'
+import { PROJECTS_DIR, resolveUserPath } from '../voice/desktopTools'
 import { WindowsInfo } from './windowsInfo'
 import { friendlyError, VoiceEngine, type VoiceConfig } from '../voice/engine'
 import { TextAgent } from '../voice/textAgent'
@@ -190,7 +193,71 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   }
 
   const files = new FileService(filesDoc, visibleProjects, activity)
-  const terminal = new TerminalService(terminalDoc, (p) => files.resolve(p), emit, activity)
+
+  /* --------------------------------------------------------------- desktop notifications (right side) */
+
+  // Same key inside the window → the existing toast is updated instead of a new one appearing.
+  const toastKeys = new Map<string, { id: string; at: number }>()
+  const notify: Notify = (t) => {
+    // Approvals always show (the user has to act); everything else follows the notification policy.
+    if (t.kind !== 'approval') {
+      const p = prefs.get().notify
+      const quiet = p.quietHours.enabled && inQuietHours(p.quietHours.start, p.quietHours.end, new Date())
+      if (!p.enabled || !p.desktop || p.doNotDisturb || (!!p.snoozedUntil && Date.parse(p.snoozedUntil) > Date.now()) || (quiet && t.kind !== 'error')) return
+    }
+    const now = Date.now()
+    for (const [k, v] of toastKeys) if (now - v.at > 15_000) toastKeys.delete(k)
+    const prev = toastKeys.get(t.key)
+    const id = t.id ?? (prev && now - prev.at < 10_000 ? prev.id : randomUUID())
+    toastKeys.set(t.key, { id, at: now })
+    emit('desktop.toast', { ...t, id, ts: new Date(now).toISOString() })
+  }
+
+  /* --------------------------------------------------------------- command approvals */
+
+  const rulesDoc = new JsonDoc<RulesState>(join(dir, 'command-rules.json'), { rules: [] })
+  docs.push(rulesDoc as never)
+  const approvalToastId = (permissionId: string) => `approval-${permissionId}`
+  const approvals = new ApprovalService(rulesDoc, {
+    requested: (r) => {
+      emit('permission.requested', r)
+      notify({
+        id: approvalToastId(r.id),
+        key: `approval:${r.id}`,
+        kind: 'approval',
+        title: r.risk === 'high' ? 'High-risk command needs your OK' : 'Command awaiting approval',
+        body: r.title,
+        detail: r.command ? `${r.command.text.length > 140 ? `${r.command.text.slice(0, 138)}…` : r.command.text}` : undefined,
+        timeoutMs: 0,
+        permissionId: r.id
+      })
+    },
+    resolved: (id, decision) => {
+      emit('permission.resolved', { id, decision })
+      emit('desktop.toastDismiss', { id: approvalToastId(id) })
+    }
+  })
+
+  /** Working folders for commands: must exist and be inside the home folder or an authorised root. */
+  const allowedRoots = async () => [PROJECTS_DIR, ...(await files.roots().catch(() => [])).map((r) => r.path)]
+  const resolveCommandCwd = async (p: string) => {
+    let real: string
+    try {
+      real = await realpath(resolveUserPath(p, homedir()))
+    } catch {
+      throw new ZvyraError('NOT_FOUND', `That folder doesn’t exist: ${p}`)
+    }
+    const st = await stat(real)
+    if (!st.isDirectory()) throw new ZvyraError('INVALID_ARGS', `Not a folder: ${real}`)
+    const roots = [homedir(), ...(await allowedRoots())]
+    for (const r of roots) {
+      const rr = await realpath(r).catch(() => r)
+      if (isInside(rr, real)) return real
+    }
+    throw new ZvyraError('PERMISSION_DENIED', `Commands can only run in your user folders or folders you authorised in Files. “${real}” is outside them.`)
+  }
+  const classifyContext = async (cwd: string): Promise<CommandContext> => ({ cwd, home: homedir(), allowedRoots: await allowedRoots(), env: process.env })
+  const terminal = new TerminalService(terminalDoc, resolveCommandCwd, emit, activity, approvals, classifyContext, notify)
   const apps = new AppsService(appsDoc, activity)
   const calls = new CallService(callsDoc, secrets, activity)
 
@@ -281,12 +348,14 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   let lastNote: { n: AppNotification; at: number } | null = null
   if (!notificationPatched) {
     notificationPatched = true
-    const show = Notification.prototype.show
+    // No Windows/macOS pop-ups: every notification ZVYRA raises is shown in the Dynamic Island instead.
     Notification.prototype.show = function (this: Notification) {
       const p = policy()
       const recent = lastNote && Date.now() - lastNote.at < 3000 ? lastNote.n : null
       if (!p.enabled || !p.desktop || (recent && suppressed(recent))) return
-      show.call(this)
+      const title = debrand(this.title || 'ZVYRA')
+      const body = debrand(this.body || '')
+      notify({ key: `system:${title}:${body}`, kind: /fail|error|couldn|blocked/i.test(`${title} ${body}`) ? 'error' : /done|complete|finished|ready/i.test(title) ? 'success' : 'info', title, body, timeoutMs: 7000 })
     }
   }
 
@@ -421,31 +490,36 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       .then((r) => {
         update({ status: 'done', label: 'Built', summary: r.reply.slice(0, 900) })
         activity('task.completed', `Builder finished: ${instruction.slice(0, 80)}`, r.files[0], 'success')
-        notifyUser('ZVYRA finished building', r.reply.slice(0, 200))
+        notify({ key: `task:${id}`, kind: 'success', title: 'Task completed', body: r.reply.slice(0, 220), detail: r.files[0] ? r.files[0].replace(/[\\/][^\\/]+$/, '') : undefined, timeoutMs: 8000 })
       })
       .catch((err) => {
-        update({ status: 'error', label: 'Build stopped', summary: friendlyError(err).replace(/^Gemini Live: /, '') })
+        const why = friendlyError(err).replace(/^Gemini Live: /, '')
+        update({ status: 'error', label: 'Build stopped', summary: why })
         activity('task.failed', `Builder stopped: ${instruction.slice(0, 80)}`, String((err as Error)?.message ?? err).slice(0, 200), 'error')
+        if (!ctrl.signal.aborted) notify({ key: `task:${id}`, kind: 'error', title: 'Task failed', body: why, detail: instruction.slice(0, 120), timeoutMs: 10_000 })
       })
       .finally(() => builds.delete(id))
     return { id, title: instruction.slice(0, 60), status: 'running' }
   }
 
-  const notifyUser = (title: string, body: string) => {
-    try {
-      if (Notification.isSupported()) new Notification({ title, body }).show()
-    } catch {
-      /* activity feed still records it */
-    }
-  }
+  /** Timers and other one-off alerts: right-side ZVYRA notification (the shell falls back to a native one). */
+  const notifyUser = (title: string, body: string) => notify({ key: `note:${title}:${body}`, kind: 'info', title, body, timeoutMs: 8000 })
 
   const toolHost: ToolHost = {
     activity,
     geminiKey: () => secrets.get(GEMINI_KEY),
     toolActivity,
     notify: notifyUser,
+    notifyEvent: (t) => notify(t),
     camera,
-    runCommand: (command, cwd) => terminal.runAndWait(command, cwd, 300_000),
+    runCommand: (command, o) => terminal.execute(command, o.cwd, { source: 'agent', shell: o.shell, background: o.background, timeoutMs: o.timeoutMs, signal: o.signal, taskTitle: o.taskTitle }),
+    workspace: async () => {
+      const p = await call('projects.active', undefined).catch(() => null)
+      if (p?.path && !prefs.get().hiddenProjects.includes(p.id) && existsSync(p.path)) return { name: p.name, path: p.path, selected: true }
+      return { name: 'ZVYRA Projects', path: PROJECTS_DIR, selected: false }
+    },
+    projects: async () => (await visibleProjects()).map((p) => ({ id: p.id, name: p.name, path: p.path })),
+    openInEditor: (path) => apps.openInEditor(path),
     runTask: async (instruction) => {
       if (!instruction.trim()) throw new Error('Empty instruction')
       if (!secrets.has(GEMINI_KEY)) {
@@ -494,7 +568,9 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         return [
           `Current date and time: ${new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`,
           s?.profile.name ? `The user's name is ${s.profile.name}.` : '',
-          project ? `Active project: ${project.name} (${project.path}).` : '',
+          project
+            ? `Workspace: the selected project “${project.name}” at ${project.path}. Relative paths and new work go there; “this project” means it.`
+            : `Workspace: no project is selected, so new work goes in ${PROJECTS_DIR}. Always tell the user the folder you used.`,
           keep.length ? `Things the user asked you to remember:\n${keep.map((m) => `- ${m.title}${m.content ? `: ${m.content.slice(0, 200)}` : ''}`).join('\n')}` : ''
         ]
           .filter(Boolean)
@@ -562,11 +638,25 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       .then((r) => {
         push({ status: 'done', response: r.reply })
         updateCard({ status: 'done', label: 'Built', summary: r.reply.slice(0, 900) })
+        // Only real work gets a notification; plain answers stay in the island.
+        if (r.files.length || r.actions.some((a) => !/— failed$/.test(a) && !/^(Checking status|Reading|Looking in|Reviewing)/.test(a))) {
+          const failed = r.actions.filter((a) => /— failed$/.test(a)).length
+          notify({
+            key: `task:${i.id}`,
+            kind: failed && !r.files.length ? 'error' : 'success',
+            title: failed && !r.files.length ? 'Task finished with problems' : 'Task completed',
+            body: r.reply.slice(0, 220),
+            detail: r.files.length ? (r.files.length === 1 ? r.files[0] : `${r.files.length} files in ${r.files[0].replace(/[\\/][^\\/]+$/, '')}`) : undefined,
+            timeoutMs: 8000
+          })
+        }
       })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : String(err)
-        push({ status: ctrl.signal.aborted ? 'cancelled' : 'error', error: friendlyError(err).replace(/^Gemini Live: /, ''), response: steps.length ? `${steps.join(' → ')}` : undefined })
-        updateCard({ status: 'error', label: 'Build stopped', summary: friendlyError(err).replace(/^Gemini Live: /, '') })
+        const why = friendlyError(err).replace(/^Gemini Live: /, '')
+        push({ status: ctrl.signal.aborted ? 'cancelled' : 'error', error: why, response: steps.length ? `${steps.join(' → ')}` : undefined })
+        updateCard({ status: 'error', label: 'Build stopped', summary: why })
+        if (!ctrl.signal.aborted) notify({ key: `task:${i.id}`, kind: 'error', title: 'Task failed', body: why, detail: text.slice(0, 120), timeoutMs: 10_000 })
         ctx.logger.warn('agent', 'run failed', { message: msg.slice(0, 300) })
       })
       .finally(() => agentRuns.delete(i.id))
@@ -905,13 +995,34 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       }),
 
     'permissions.respond': async (a) => {
+      if (!a || typeof a.id !== 'string' || typeof a.decision !== 'string') throw new ZvyraError('INVALID_ARGS', 'id and decision are required')
+      // Desktop command approvals: answered only here, through the trusted renderer IPC.
+      if (approvals.owns(a.id)) {
+        try {
+          return approvals.respond(a.id, a.decision)
+        } catch (err) {
+          throw new ZvyraError('INVALID_ARGS', err instanceof Error ? err.message : String(err))
+        }
+      }
+      if (a.decision === 'allow_always') throw new ZvyraError('INVALID_ARGS', 'Always allow is only available for commands')
       if (a.decision !== 'allow_task') return call('permissions.respond', a)
       const pending = await call('permissions.pending', undefined)
       const req = pending.find((p) => p.id === a.id)
       await call('permissions.respond', { id: a.id, decision: 'allow_once' })
       if (req?.taskId) allowTask.add(req.taskId)
     },
-    'permissions.pending': async () => (await call('permissions.pending', undefined)).map((p) => ({ ...p, title: debrand(p.title), description: debrand(p.description) })),
+    'permissions.pending': async () => [
+      ...approvals.list(),
+      ...(await call('permissions.pending', undefined).catch(() => [])).map((p) => ({ ...p, title: debrand(p.title), description: debrand(p.description) }))
+    ],
+    'permissions.rules': () => approvals.rules(),
+    'permissions.revokeRule': (a) => {
+      if (!a || typeof a.id !== 'string') throw new ZvyraError('INVALID_ARGS', 'id is required')
+      const before = approvals.rules().find((r) => r.id === a.id)
+      const next = approvals.revoke(a.id)
+      if (before) activity('permission.revoked', 'Saved command rule removed', before.command.slice(0, 120), 'info')
+      return next
+    },
 
     'chat.pickAttachments': async () => {
       const win = BrowserWindow.getFocusedWindow()
@@ -994,7 +1105,12 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         await apps.openInEditor(target)
       }),
 
-    'terminal.run': (a) => prefer('terminal.run', a, async () => terminal.run(a.command, a.cwd ?? (a.projectId ? (await visibleProjects()).find((p) => p.id === a.projectId)?.path : undefined))),
+    'terminal.run': (a) =>
+      prefer('terminal.run', a, async () => {
+        if (!a || typeof a.command !== 'string') throw new ZvyraError('INVALID_ARGS', 'Enter a command')
+        const cwd = a.cwd ?? (a.projectId ? (await visibleProjects()).find((p) => p.id === a.projectId)?.path : undefined)
+        return terminal.run(a.command, cwd, a.shell === 'cmd' ? 'cmd' : 'powershell')
+      }),
     'terminal.kill': (a) => prefer('terminal.kill', a, () => terminal.kill(a.id)),
     'terminal.runs': (a) => prefer('terminal.runs', a, () => terminal.runs(a.limit)),
     'terminal.openExternal': (a) => prefer('terminal.openExternal', a, () => terminal.openExternal(a.cwd)),

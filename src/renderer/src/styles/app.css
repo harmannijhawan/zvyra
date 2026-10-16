@@ -22,21 +22,12 @@ body[data-window='main'] {
   overflow: hidden;
 }
 .app::before {
-  /* soft moving sheen */
+  /* soft static sheen (the old 18 s full-window drift loop cost GPU time for nothing) */
   content: '';
   position: absolute;
   inset: -20%;
-  background: radial-gradient(40% 30% at 50% 50%, rgba(120, 170, 255, 0.10), transparent 70%);
-  animation: app-sheen 18s ease-in-out infinite alternate;
+  background: radial-gradient(40% 30% at 50% 50%, rgba(120, 170, 255, 0.08), transparent 70%);
   pointer-events: none;
-}
-@keyframes app-sheen {
-  from {
-    transform: translate(-12%, -8%);
-  }
-  to {
-    transform: translate(14%, 10%);
-  }
 }
 .app > * {
   position: relative;
@@ -708,6 +699,126 @@ button.list-item:hover,
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+/* Command approvals: ZVYRA blue, amber only as the risk accent. */
+.perm-card.cmd {
+  gap: 9px;
+  background: linear-gradient(180deg, rgba(47, 107, 255, 0.1), rgba(47, 107, 255, 0.03));
+  border-color: rgba(110, 160, 255, 0.28);
+}
+.perm-card.cmd.risk-medium .perm-icon {
+  background: var(--accent-soft);
+  color: #8fbaff;
+}
+.perm-card.cmd.risk-high {
+  border-color: rgba(255, 95, 109, 0.4);
+}
+.perm-command {
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #e6eeff;
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.perm-shell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.perm-shell svg {
+  width: 12px;
+  height: 12px;
+}
+.perm-reason {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+.perm-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.perm-where svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+.perm-where span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.perm-targets {
+  margin: 0;
+  padding: 0 0 0 18px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.perm-targets li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.perm-card .btn:disabled {
+  opacity: 0.45;
+}
+
+.rule-cmd {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- voice meter */
+
+.zv-meter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: none;
+}
+.zv-meter i {
+  flex: 1 1 0;
+  max-width: 4px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: #4a8bff;
+  opacity: 0.55;
+  transition: height 0.09s linear, opacity 0.2s ease;
+}
+.zv-meter.on i {
+  opacity: 1;
+}
+.zv-meter.t-speak i {
+  background: #8fc2ff;
+}
+.zv-meter.t-think i {
+  background: #6f8fd8;
 }
 
 /* ---------------------------------------------------------------- progress */

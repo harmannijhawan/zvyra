@@ -452,7 +452,7 @@ export class MockBackend implements ZvyraBackend {
     return task
   }
 
-  private resolvePermission(pid: string, decision: 'allow_once' | 'allow_task' | 'deny', continueTask = true) {
+  private resolvePermission(pid: string, decision: 'allow_once' | 'allow_task' | 'allow_always' | 'deny', continueTask = true) {
     const req = this.permissions.get(pid)
     if (!req) throw new ZvyraError('NOT_FOUND', 'Permission request not found or already answered')
     this.permissions.delete(pid)
@@ -701,6 +701,8 @@ export class MockBackend implements ZvyraBackend {
     'permissions.pending': () => [...this.permissions.values()],
     'permissions.respond': ({ id: pid, decision }) => this.resolvePermission(pid, decision),
     'permissions.policies': () => this.policies,
+    'permissions.rules': () => [],
+    'permissions.revokeRule': () => [],
     'permissions.setPolicy': ({ category, policy }) => {
       this.policies = this.policies.map((p) => {
         if (p.category !== category) return p

@@ -7,7 +7,7 @@ import type { BrowserWindow } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IslandMode } from '../../shared/shell'
-import type { ZvyraEvent } from '../../shared/contract'
+import type { VoiceStatus, ZvyraEvent } from '../../shared/contract'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -22,6 +22,8 @@ export async function runQaCapture(opts: {
   exercise?: () => Promise<unknown>
   /** Sends a synthetic backend event to every window (tool-card QA). */
   inject?: (e: ZvyraEvent) => void
+  /** Window/display geometry for the report. */
+  geometry?: () => Record<string, unknown>
 }) {
   await mkdir(opts.dir, { recursive: true })
   const shot = async (win: BrowserWindow | null, name: string) => {
@@ -56,6 +58,88 @@ export async function runQaCapture(opts: {
     await click('.ob-btn', 'Continue')
     await wait(1800)
     await shot(opts.main(), 'onboard-4-tour')
+    opts.quit()
+    return
+  }
+  // Island states, approval popup, notifications and geometry (renders the UI for each state).
+  if (process.env['ZVYRA_QA_ISLAND_STATES'] && opts.inject) {
+    const report: Record<string, unknown> = { geometry: opts.geometry?.() }
+    const surface = async (name: string) => {
+      const win = opts.island()
+      const rect = (await win?.webContents
+        .executeJavaScript(`(() => { const d = document.querySelector('.di'); if (!d) return null; const r = d.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, radius: getComputedStyle(d).borderRadius, cls: d.className, anims: document.getAnimations().map(a => a.animationName || a.transitionProperty || 'x') } })()`, true)
+        .catch(() => null)) as Record<string, unknown> | null
+      report[name] = { window: win?.getBounds(), surface: rect }
+      await shot(win ?? null, `state-${name}`)
+    }
+    const voice = (state: VoiceStatus['state'], userSpeaking = false): ZvyraEvent => ({
+      type: 'voice.status',
+      payload: {
+        state,
+        userSpeaking,
+        wakeWordEnabled: true,
+        wakePhrase: 'Hey Zvyra',
+        wake: { id: 'zvyra-kws', name: 'wake', ready: true, processing: 'local' },
+        stt: { id: 'gemini-live', name: 'live', ready: true, processing: 'external' },
+        tts: { id: 'gemini-live', name: 'live', ready: true, processing: 'external' },
+        micAvailable: true,
+        micDeviceId: null
+      }
+    })
+    opts.setIslandMode('compact')
+    opts.inject(voice('standby'))
+    await wait(900)
+    await surface('01-idle')
+    opts.inject(voice('listening'))
+    await wait(700)
+    await surface('02-listening')
+    opts.inject(voice('listening', true))
+    for (const l of [0.2, 0.6, 0.9, 0.4]) {
+      opts.inject({ type: 'voice.level', payload: { level: l } })
+      await wait(70)
+    }
+    opts.inject({ type: 'voice.transcript', payload: { text: 'Make me a calculator', final: false } })
+    await wait(400)
+    await surface('03-speech-detected')
+    opts.inject(voice('transcribing'))
+    await wait(700)
+    await surface('04-processing')
+    opts.inject(voice('speaking'))
+    opts.inject({ type: 'voice.level', payload: { level: 0.55 } })
+    await wait(700)
+    await surface('05-speaking')
+    opts.inject(voice('standby'))
+    opts.inject({ type: 'voice.level', payload: { level: 0 } })
+    await wait(900)
+    await surface('06-back-to-idle')
+    const perm = {
+      id: 'qa-perm',
+      category: 'run_commands' as const,
+      title: 'Installs or changes project dependencies (npm install)',
+      description: 'ZVYRA wants to run this command.',
+      risk: 'medium' as const,
+      reason: 'Installs or changes project dependencies (npm install). ZVYRA asks before changing your projects, installing packages or running scripts.',
+      canAlwaysAllow: true,
+      command: { shell: 'powershell' as const, text: 'npm install', cwd: 'C:\\Users\\you\\Documents\\ZVYRA Projects\\landing-page' },
+      targets: [],
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 300_000).toISOString()
+    }
+    opts.inject({ type: 'permission.requested', payload: perm })
+    await wait(900)
+    await surface('07-approval')
+    opts.inject({ type: 'permission.resolved', payload: { id: perm.id, decision: 'deny' } })
+    opts.inject({ type: 'desktop.toast', payload: { id: 'qa-t1', key: 'qa1', kind: 'denied', title: 'Command denied', body: 'ZVYRA did not run it.', detail: 'npm install', ts: new Date().toISOString(), timeoutMs: 6000 } })
+    await wait(900)
+    await surface('08-notice-denied')
+    opts.inject({ type: 'desktop.toast', payload: { id: 'qa-t2', key: 'qa2', kind: 'file', title: 'File created', body: 'index.html', detail: 'C:\\Users\\you\\Documents\\ZVYRA Projects\\calculator\\index.html', ts: new Date().toISOString(), timeoutMs: 6000 } })
+    await wait(900)
+    await surface('09-notice-file')
+    opts.inject({ type: 'desktop.toastDismiss', payload: { id: 'qa-t2' } })
+    opts.inject({ type: 'desktop.toastDismiss', payload: { id: 'qa-t1' } })
+    await wait(900)
+    await surface('10-back-to-idle')
+    await writeFile(join(opts.dir, 'island-report.json'), JSON.stringify(report, null, 2))
     opts.quit()
     return
   }

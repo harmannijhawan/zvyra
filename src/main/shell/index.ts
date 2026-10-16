@@ -31,7 +31,7 @@ import {
 import type { ShellLogger } from '../backendContext'
 import { broadcast, isTrustedSender, toErrorShape } from '../ipc'
 import { renderZIcon } from './iconRaster'
-import { anchorFromBounds, boundsForMode, defaultAnchor, type IslandAnchor } from './islandGeometry'
+import { dockedBounds } from './islandGeometry'
 import { ShellStateStore } from './shellState'
 import { runQaCapture } from './qaCapture'
 
@@ -51,9 +51,11 @@ export class Shell {
   private settings: AppSettings = DEFAULT_SETTINGS
   private voice: VoiceStatus | null = null
   private islandMode: IslandMode = 'compact'
-  private islandDirection: 'down' | 'up' = 'down'
-  private anchor: IslandAnchor | null = null
-  private applyingBounds = false
+  /** The island is docked to the top centre of this display. */
+  private islandDisplayId: number | null = null
+  private dragging = false
+  private pendingPermissions = new Set<string>()
+  private hiddenBeforeApproval = false
   private pendingRoute: string | null = null
   private quitting = false
   private readonly store: ShellStateStore
@@ -80,8 +82,10 @@ export class Shell {
     this.createMain(!this.opts.startHidden && !this.settings.startup.startHidden)
     this.applyShortcuts()
     this.applyLoginItem()
-    screen.on('display-metrics-changed', () => this.reflowIsland())
-    screen.on('display-removed', () => this.reflowIsland())
+    // Resolution, scaling, taskbar or monitor changes: re-dock at the exact top centre.
+    for (const ev of ['display-metrics-changed', 'display-removed', 'display-added'] as const) {
+      screen.on(ev as 'display-added', () => this.placeIsland())
+    }
     const qaDir = process.env['ZVYRA_QA_CAPTURE']
     if (qaDir && !app.isPackaged) {
       void runQaCapture({
@@ -96,6 +100,11 @@ export class Shell {
         quit: () => this.quit(),
         hideIsland: () => this.hideIsland(),
         inject: (e) => broadcast('zvyra:event', e),
+        geometry: () => ({
+          displays: screen.getAllDisplays().map((d) => ({ id: d.id, bounds: d.bounds, workArea: d.workArea, scaleFactor: d.scaleFactor })),
+          islandDisplay: this.islandDisplay().id,
+          island: this.island?.getBounds()
+        }),
         exercise:
           process.env['ZVYRA_QA_PROMPT'] || this.opts.backendMode.mode === 'mock'
             ? () =>
@@ -163,6 +172,23 @@ export class Shell {
       this.refreshTrayMenu()
     } else if (e.type === 'camera.state' && e.payload.open) {
       this.revealIsland()
+    } else if (e.type === 'permission.requested') {
+      // Approval popups live in the island: make sure it can be seen, without stealing focus.
+      if (!this.pendingPermissions.size) this.hiddenBeforeApproval = !this.island || this.island.isDestroyed() || !this.island.isVisible()
+      this.pendingPermissions.add(e.payload.id)
+      this.revealIsland()
+    } else if (e.type === 'permission.resolved') {
+      this.pendingPermissions.delete(e.payload.id)
+      if (!this.pendingPermissions.size && this.hiddenBeforeApproval) {
+        this.hiddenBeforeApproval = false
+        setTimeout(() => {
+          if (!this.pendingPermissions.size && !(this.voice && ['wake_detected', 'listening', 'transcribing', 'speaking'].includes(this.voice.state))) this.hideIsland()
+        }, 1500)
+      }
+    } else if (e.type === 'desktop.toast') {
+      // Notifications are shown only inside the Dynamic Island (no separate window, no system pop-ups).
+      // Problems bring a hidden island back so they aren't missed.
+      if (e.payload.kind === 'error' || e.payload.kind === 'denied') this.revealIsland()
     }
     broadcast('zvyra:event', e)
   }
@@ -349,11 +375,11 @@ export class Shell {
     if (this.island && !this.island.isDestroyed()) return
     const saved = this.store.get().island
     this.islandMode = saved?.mode === 'mini' ? 'mini' : 'compact'
+    // Only the chosen display is remembered; the island is always docked to its top centre.
     const display = saved ? screen.getDisplayNearestPoint({ x: Math.round(saved.x), y: Math.round(saved.y) }) : screen.getPrimaryDisplay()
-    this.anchor = saved ? { centerX: saved.x, top: saved.y } : defaultAnchor(display.workArea)
+    this.islandDisplayId = display.id
     // Fixed footprint: the window never resizes, the pill morphs inside it.
-    const { bounds, direction } = boundsForMode(this.anchor, 'expanded', display.workArea)
-    this.islandDirection = direction
+    const bounds = dockedBounds(display.workArea)
     const win = new BrowserWindow({
       ...bounds,
       show: false,
@@ -383,12 +409,6 @@ export class Shell {
       if (this.settings.island.enabled && visible) win.showInactive()
       this.emitIsland()
     })
-    win.on('moved', () => {
-      if (this.applyingBounds || win.isDestroyed()) return
-      this.anchor = anchorFromBounds(win.getBounds(), 'expanded', this.islandDirection)
-      this.reflowIsland()
-      this.persistIsland()
-    })
     win.on('close', (e) => {
       if (!this.quitting) {
         e.preventDefault()
@@ -400,12 +420,17 @@ export class Shell {
     })
   }
 
+  /** The display the island is docked to (falls back to primary when it was unplugged). */
+  private islandDisplay(): Electron.Display {
+    return screen.getAllDisplays().find((d) => d.id === this.islandDisplayId) ?? screen.getPrimaryDisplay()
+  }
+
   private persistIsland() {
-    if (!this.anchor) return
+    const work = this.islandDisplay().workArea
     this.store.update({
       island: {
-        x: this.anchor.centerX,
-        y: this.anchor.top,
+        x: work.x + work.width / 2,
+        y: work.y,
         mode: this.islandMode === 'expanded' ? 'compact' : this.islandMode,
         visible: !!this.island?.isVisible()
       }
@@ -417,7 +442,7 @@ export class Shell {
       visible: !!this.island && !this.island.isDestroyed() && this.island.isVisible(),
       mode: this.islandMode,
       alwaysOnTop: !!this.island && !this.island.isDestroyed() && this.island.isAlwaysOnTop(),
-      expandDirection: this.islandDirection
+      expandDirection: 'down'
     }
   }
 
@@ -440,25 +465,13 @@ export class Shell {
     return this.islandState()
   }
 
-  /** Re-applies the fixed footprint for the current anchor (display changes, drags near edges). */
+  /** Docks the window to the exact top centre of its display (also after scaling/resolution changes). */
   private placeIsland() {
     const win = this.island
-    if (!win || win.isDestroyed() || !this.anchor) return
-    const display = screen.getDisplayNearestPoint({ x: Math.round(this.anchor.centerX), y: Math.round(this.anchor.top) })
-    const { bounds, direction } = boundsForMode(this.anchor, 'expanded', display.workArea)
+    if (!win || win.isDestroyed() || this.dragging) return
+    const bounds = dockedBounds(this.islandDisplay().workArea)
     const cur = win.getBounds()
-    const changed = direction !== this.islandDirection
-    this.islandDirection = direction
-    if (cur.x !== bounds.x || cur.y !== bounds.y || cur.width !== bounds.width || cur.height !== bounds.height) {
-      this.applyingBounds = true
-      win.setBounds(bounds)
-      setTimeout(() => (this.applyingBounds = false), 250)
-    }
-    if (changed) this.emitIsland()
-  }
-
-  private reflowIsland() {
-    this.placeIsland()
+    if (cur.x !== bounds.x || cur.y !== bounds.y || cur.width !== bounds.width || cur.height !== bounds.height) win.setBounds(bounds)
   }
 
   showIsland() {
@@ -534,23 +547,30 @@ export class Shell {
         return this.setAlwaysOnTop(value)
       },
       'island.resetPosition': () => {
-        this.anchor = defaultAnchor(screen.getPrimaryDisplay().workArea)
+        this.islandDisplayId = screen.getPrimaryDisplay().id
         this.placeIsland()
         this.persistIsland()
         this.emitIsland()
         return this.islandState()
       },
+      // Dragging moves the island to another display; on release it docks to that display's top centre.
       'island.moveTo': ({ x, y, done }) => {
         const win = this.island
         if (!win || win.isDestroyed() || !Number.isFinite(x) || !Number.isFinite(y)) return
-        this.applyingBounds = true
-        win.setPosition(Math.round(x), Math.round(y))
-        this.anchor = anchorFromBounds(win.getBounds(), 'expanded', this.islandDirection)
-        if (done) {
-          this.applyingBounds = false
-          this.placeIsland()
-          this.persistIsland()
+        const b = win.getBounds()
+        if (!done) {
+          this.dragging = true
+          win.setPosition(Math.round(x), Math.round(y))
+          return
         }
+        this.dragging = false
+        this.islandDisplayId = screen.getDisplayNearestPoint({ x: Math.round(x + b.width / 2), y: Math.round(y + 24) }).id
+        this.placeIsland()
+        this.persistIsland()
+      },
+      'island.reveal': () => {
+        this.revealIsland()
+        return this.islandState()
       },
       'island.setInteractive': ({ interactive }) => {
         const win = this.island

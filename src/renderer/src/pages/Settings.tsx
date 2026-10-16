@@ -11,11 +11,12 @@ import {
   ShieldCheck,
   Smartphone,
   Stethoscope,
+  TerminalSquare,
   User,
   type LucideIcon
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { PermissionCategory, PermissionPolicy, PermissionPolicyEntry } from '@shared/contract'
+import type { CommandRule, PermissionCategory, PermissionPolicy, PermissionPolicyEntry } from '@shared/contract'
 import { Button, Card, ConfirmDialog, Segmented } from '../components/ui'
 import { call, errorMessage, shellCall } from '../lib/client'
 import { humanize } from '../lib/format'
@@ -80,7 +81,12 @@ function Section({ id }: { id: string }) {
     case 'ai':
       return <AiSettings />
     case 'permissions':
-      return <Permissions />
+      return (
+        <div className="stack">
+          <Permissions />
+          <CommandRules />
+        </div>
+      )
     case 'notifications':
       return <NotificationSettings />
     case 'startup':
@@ -206,7 +212,7 @@ function Permissions() {
       <div className="notice" style={{ marginBottom: 10 }}>
         <ShieldCheck />
         <span>
-          “Ask” pauses the task and shows an approval card on the island and in Tasks. Choose “Allow for task” on a card to let that task continue without asking again. Terminal commands you type always show a confirmation.
+          “Ask” pauses the task and shows an approval card on the Dynamic Island and in Tasks. Commands ZVYRA wants to run are checked first: read-only ones run, installs, scripts and changes ask, and dangerous system commands are blocked. Commands you type in Terminal only ask when they are high risk.
         </span>
       </div>
       {err && <div className="notice warning">{err}</div>}
@@ -239,6 +245,44 @@ function Permissions() {
         onClose={() => setPendingAllow(null)}
         onConfirm={() => pendingAllow && void set(pendingAllow, 'allow')}
       />
+    </Card>
+  )
+}
+
+/** Review and revoke "Always allow" command rules. */
+function CommandRules() {
+  const [rules, setRules] = useState<CommandRule[] | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  useEffect(() => {
+    call('permissions.rules')
+      .then(setRules)
+      .catch((e) => setErr(errorMessage(e)))
+  }, [])
+  const revoke = async (id: string) => {
+    const next = await attempt(() => call('permissions.revokeRule', { id }), { success: 'Rule removed', errorTitle: 'Rule not removed' })
+    if (next) setRules(next)
+  }
+  return (
+    <Card title="Always-allowed commands" icon={TerminalSquare}>
+      <div className="notice" style={{ marginBottom: 10 }}>
+        <ShieldCheck />
+        <span>
+          Each rule allows one exact command, in one shell, in one folder — nothing else. High-risk commands are never saved, and blocked commands (security, disk and system changes) can’t be allowed at all.
+        </span>
+      </div>
+      {err && <div className="notice warning">{err}</div>}
+      {rules && !rules.length && <div className="muted" style={{ padding: '6px 2px' }}>No saved rules. Choose “Always Allow” on an approval to add one.</div>}
+      {rules?.map((r) => (
+        <Row
+          key={r.id}
+          label={<code className="rule-cmd selectable">{r.command}</code>}
+          help={`${r.shell === 'cmd' ? 'Command Prompt' : 'PowerShell'} · ${r.cwd} · ${r.uses ? `used ${r.uses}×${r.lastUsedAt ? `, last ${new Date(r.lastUsedAt).toLocaleString()}` : ''}` : 'not used yet'}`}
+        >
+          <Button size="sm" variant="ghost" onClick={() => void revoke(r.id)}>
+            Revoke
+          </Button>
+        </Row>
+      ))}
     </Card>
   )
 }

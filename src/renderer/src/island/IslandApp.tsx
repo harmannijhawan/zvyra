@@ -1,29 +1,35 @@
 /**
- * ZVYRA Dynamic Island — one translucent surface that morphs between states:
- *   mini · compact · voice (listening / speaking) · tool (live research, media,
- *   builds…) · camera (webcam preview) · peek (live activity) · expanded
+ * ZVYRA Dynamic Island: one dark surface docked to the top centre of the
+ * screen that morphs between real states (see lib/islandVisual.ts):
+ *   idle (tiny) · listening · speech detected · processing · speaking ·
+ *   working · approval · tool results · reply peek · camera · expanded panel
+ *
+ * Motion rules: one width/height/radius transition (no overshoot), content
+ * fades in once per state group, indicators move only with real audio levels
+ * or real processing. No sparkles, glows, rainbow colours or decorative loops.
  * The window has a fixed transparent footprint and is click-through outside the
- * surface, so every change is a smooth CSS morph (no window resizing).
+ * surface, so state changes never resize or move the window.
  */
-import { ChevronDown, ExternalLink, Maximize2, Mic, MicOff, Minus, Send, Square, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, FileText, Info, Maximize2, Mic, MicOff, Minus, Rocket, Send, ShieldCheck, ShieldX, Square, TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as RMouseEvent } from 'react'
 import type { IslandMode } from '@shared/shell'
 import type { ToolActivity } from '@shared/contract'
-import { call, onShellEvent, shellCall } from '../lib/client'
+import { call, shellCall } from '../lib/client'
 import { setWakeWord, submitInstruction, toggleListening, useActiveTasks, useCompanion } from '../lib/hooks'
-import { useStore } from '../lib/store'
-import { useToasts } from '../lib/toast'
+import { deriveIslandVisual, ISLAND_SIZES, surfaceHeight, visualGroup, type IslandVisual } from '../lib/islandVisual'
+import { setState, useStore } from '../lib/store'
 import { attempt, goTo } from '../lib/useAction'
-import { Pet } from '../components/Pet'
+import { ZMark } from '../components/brand'
 import { PermissionCard } from '../components/PermissionCard'
 import { PlanSteps, TaskProgress, TaskStatusBadge } from '../components/TaskBits'
 import { HelixWave } from '../components/HelixWave'
 import { Toasts } from '../components/ui'
 import { CameraContent, ToolStack, useFreshTools } from './IslandCards'
 
-type Visual = 'mini' | 'compact' | 'voice' | 'peek' | 'expanded' | 'tool' | 'camera'
-
 const setMode = (mode: IslandMode) => void attempt(() => shellCall('island.setMode', { mode }))
+const PEEK_MS = 9000
+/** How long a notification without its own timeout stays in the island. */
+const NOTICE_MS = 7000
 
 /* ------------------------------------------------------------------ click-through + drag */
 
@@ -46,18 +52,18 @@ function useClickThrough() {
   }, [])
 }
 
-/** Click vs drag on the same surface: moves the window after 4px of travel. */
+/** Click vs drag on the same surface. Dragging moves the island to another display; it re-docks on release. */
 function useDrag(onClick: () => void) {
   const state = useRef<{ sx: number; sy: number; wx: number; wy: number; moved: boolean } | null>(null)
-  const onMouseDown = (e: RMouseEvent) => {
-    if (e.button !== 0 || (e.target as Element).closest('button, textarea, input, a, .no-drag')) return
+  return (e: RMouseEvent) => {
+    if (e.button !== 0 || (e.target as Element).closest('button, textarea, input, a, pre, .no-drag')) return
     state.current = { sx: e.screenX, sy: e.screenY, wx: window.screenX, wy: window.screenY, moved: false }
     const move = (ev: MouseEvent) => {
       const s = state.current
       if (!s) return
       const dx = ev.screenX - s.sx
       const dy = ev.screenY - s.sy
-      if (!s.moved && Math.hypot(dx, dy) < 4) return
+      if (!s.moved && Math.hypot(dx, dy) < 6) return
       s.moved = true
       void shellCall('island.moveTo', { x: s.wx + dx, y: s.wy + dy }).catch(() => undefined)
     }
@@ -73,7 +79,18 @@ function useDrag(onClick: () => void) {
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', up)
   }
-  return onMouseDown
+}
+
+/** Re-render once when the soonest of `deadlines` passes (instead of a 1 s ticker running forever). */
+function useDeadline(deadlines: number[]) {
+  const [, setTick] = useState(0)
+  const next = deadlines.filter((d) => d > Date.now()).sort((a, b) => a - b)[0]
+  useEffect(() => {
+    if (!next) return
+    const t = setTimeout(() => setTick((n) => n + 1), Math.max(30, next - Date.now() + 20))
+    return () => clearTimeout(t)
+  }, [next])
+  return Date.now()
 }
 
 /* ------------------------------------------------------------------ app */
@@ -82,176 +99,114 @@ export function IslandApp() {
   const island = useStore((s) => s.island)
   const reduceMotion = useStore((s) => !!s.settings?.appearance.reduceMotion)
   const voice = useStore((s) => s.voice)
-  const level = useStore((s) => s.voiceLevel)
   const interactions = useStore((s) => s.interactions)
   const permissions = useStore((s) => s.permissions)
-  const companion = useCompanion()
-  const active = useActiveTasks()
-  const toasts = useToasts()
+  const camera = useStore((s) => s.camera)
+  const tools = useStore((s) => s.tools)
   const mode = island?.mode ?? 'compact'
-  const dirUp = island?.expandDirection === 'up'
   useClickThrough()
 
   useEffect(() => {
     document.body.classList.toggle('reduce-motion', reduceMotion)
   }, [reduceMotion])
 
-  useEffect(
-    () =>
-      onShellEvent((e) => {
-        if (e.type === 'shell.shortcut' && e.payload.action === 'toggleIsland') return
-      }),
-    []
-  )
-
-  const vs = voice?.state
-  const inVoice = vs === 'wake_detected' || vs === 'listening' || vs === 'transcribing' || vs === 'speaking'
   const latest = interactions[0]
-  const now = useTicker(1000)
+  const replyAt = latest && latest.status !== 'pending' && latest.source !== 'voice' && (latest.response || latest.error) ? Date.parse(latest.updatedAt) : 0
+  const notices = useStore((s) => s.notices)
+  const noticeEnd = (n: (typeof notices)[number]) => Date.parse(n.ts) + (n.timeoutMs > 0 ? n.timeoutMs : NOTICE_MS)
+  const now = useDeadline([replyAt + PEEK_MS, ...notices.map(noticeEnd), ...tools.map((t) => Date.parse(t.updatedAt) + (t.kind === 'build' ? 42_000 : 14_000))])
+  // Approval notices are shown as the approval card itself.
+  const notice = notices.find((n) => n.kind !== 'approval' && noticeEnd(n) > now)
   const working = !!latest && (latest.status === 'pending' || latest.status === 'streaming') && latest.source !== 'voice'
-  const freshReply = !!latest && latest.status !== 'pending' && latest.source !== 'voice' && now - Date.parse(latest.updatedAt) < 9000 && (!!latest.response || !!latest.error)
   const [peekDismissed, setPeekDismissed] = useState<string | null>(null)
-  const hasPeek = (working || freshReply || permissions.length > 0 || toasts.some((t) => t.tone !== 'success')) && peekDismissed !== `${latest?.id}:${latest?.status}`
-  const camOpen = useStore((s) => s.camera.open)
+  const peekKey = `${latest?.id}:${latest?.status}`
+  // A notification about the same result replaces the reply peek (no double message).
+  const coveredByNotice = notices.some((n) => n.kind !== 'approval' && Math.abs(Date.parse(n.ts) - replyAt) < 3000)
+  const hasPeek = !!replyAt && now - replyAt < PEEK_MS && peekDismissed !== peekKey && !coveredByNotice
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set())
   const dismissTool = useCallback((id: string) => setDismissed((d) => new Set(d).add(id)), [])
-  const fresh = useFreshTools(now, dismissed, { skipCamera: camOpen })
-  const toolRunning = fresh.some((t) => t.status === 'running')
+  const fresh = useFreshTools(now, dismissed, { skipCamera: camera.open })
 
-  // Camera wins (its stream must stay mounted to answer capture requests), then the
-  // panel the user opened, voice, approvals, live tool cards, plain replies.
-  const visual: Visual = camOpen
-    ? 'camera'
-    : mode === 'expanded'
-      ? 'expanded'
-      : inVoice
-        ? 'voice'
-        : permissions.length
-          ? 'peek'
-          : fresh.length
-            ? 'tool'
-            : hasPeek
-              ? 'peek'
-              : mode === 'mini'
-                ? 'mini'
-                : 'compact'
-  const glow = camOpen
-    ? 'cam'
-    : inVoice
-      ? vs === 'speaking'
-        ? 'speak'
-        : vs === 'transcribing'
-          ? 'think'
-          : 'listen'
-      : toolRunning
-        ? 'tool'
-        : working || active.some((t) => t.status === 'running' || t.status === 'planning')
-          ? 'work'
-          : permissions.length
-            ? 'warn'
-            : companion.state === 'error'
-              ? 'error'
-              : 'none'
+  const visual = deriveIslandVisual({
+    mode,
+    voice,
+    permissions: permissions.length,
+    camera,
+    freshTools: fresh.length,
+    agentWorking: working,
+    hasPeek,
+    hasNotice: !!notice
+  })
 
   const expand = useCallback(() => setMode('expanded'), [])
   const collapse = useCallback(() => setMode('compact'), [])
 
   return (
-    <div className={`island-root ${dirUp ? 'dir-up' : ''}`}>
-      <Surface
-        visual={visual}
-        glow={glow}
-        level={level}
-        onExpand={expand}
-        onCollapse={collapse}
-        dismissPeek={() => setPeekDismissed(`${latest?.id}:${latest?.status}`)}
-        tools={fresh}
-        onDismissTool={dismissTool}
-        inVoice={inVoice}
-      />
+    <div className="island-root">
+      <Surface visual={visual} onExpand={expand} onCollapse={collapse} dismissPeek={() => setPeekDismissed(peekKey)} tools={fresh} onDismissTool={dismissTool} />
       {visual === 'expanded' && <Toasts />}
     </div>
   )
 }
 
-function useTicker(ms: number) {
-  const [n, setN] = useState(() => Date.now())
-  useEffect(() => {
-    const t = setInterval(() => setN(Date.now()), ms)
-    return () => clearInterval(t)
-  }, [ms])
-  return n
-}
-
 /* ------------------------------------------------------------------ surface */
-
-const SIZE: Record<'mini' | 'compact', { w: number; h: number; r: number }> = {
-  mini: { w: 64, h: 44, r: 22 },
-  compact: { w: 340, h: 54, r: 27 }
-}
-
-const WIDE: Partial<Record<Visual, { w: number; r: number; max: number }>> = {
-  expanded: { w: 470, r: 30, max: 600 },
-  camera: { w: 470, r: 32, max: 560 },
-  voice: { w: 420, r: 28, max: 420 },
-  peek: { w: 420, r: 28, max: 240 },
-  tool: { w: 436, r: 28, max: 380 }
-}
 
 function Surface({
   visual,
-  glow,
-  level,
   onExpand,
   onCollapse,
   dismissPeek,
   tools,
-  onDismissTool,
-  inVoice
+  onDismissTool
 }: {
-  visual: Visual
-  glow: string
-  level: number
+  visual: IslandVisual
   onExpand: () => void
   onCollapse: () => void
   dismissPeek: () => void
   tools: ToolActivity[]
   onDismissTool: (id: string) => void
-  inVoice: boolean
 }) {
+  const group = visualGroup(visual)
   const bodyRef = useRef<HTMLDivElement>(null)
   const [measured, setMeasured] = useState(0)
   useLayoutEffect(() => {
     const el = bodyRef.current
     if (!el) return
-    const ro = new ResizeObserver(() => setMeasured(el.offsetHeight))
+    const update = () => setMeasured(Math.ceil(el.getBoundingClientRect().height))
+    const ro = new ResizeObserver(update)
     ro.observe(el)
-    setMeasured(el.offsetHeight)
+    update()
     return () => ro.disconnect()
-  }, [visual])
+  }, [group])
 
-  const wide = visual === 'mini' || visual === 'compact' ? null : WIDE[visual]!
-  const width = wide ? wide.w : SIZE[visual as 'mini' | 'compact'].w
-  const radius = wide ? wide.r : SIZE[visual as 'mini' | 'compact'].r
-  const height = wide ? Math.min(wide.max, Math.max(54, measured || 54)) : SIZE[visual as 'mini' | 'compact'].h
-  const onMouseDown = useDrag(visual === 'expanded' || visual === 'camera' ? () => undefined : visual === 'mini' ? () => setMode('compact') : onExpand)
+  const voiceState = useStore((s) => s.voice?.state)
+  const voiceActive = voiceState === 'wake_detected' || voiceState === 'listening' || voiceState === 'transcribing' || voiceState === 'speaking'
+  const size = ISLAND_SIZES[visual]
+  const height = surfaceHeight(visual, measured)
+  const rawLevel = useStore((s) => s.voiceLevel)
+  // Glass edge brightens only with real audio (user speaking or ZVYRA speaking).
+  const lvl = visual === 'speech' || visual === 'speaking' ? Math.min(1, rawLevel) : 0
+  const onMouseDown = useDrag(visual === 'idle' ? onExpand : visual === 'mini' ? () => setMode('compact') : () => undefined)
+  const inVoice = group === 'voice'
 
   return (
     <div
-      className={`di v-${visual} glow-${glow}`}
-      style={{ width, height, borderRadius: radius, ['--lvl' as string]: Math.min(1, level).toFixed(3) }}
+      className={`di v-${visual} g-${group}`}
+      style={{ width: size.w, height, borderRadius: size.r, ['--lvl' as string]: lvl.toFixed(2) }}
       onMouseDown={onMouseDown}
       role="region"
       aria-label="ZVYRA Dynamic Island"
     >
-      <span className="di-glow" aria-hidden="true" />
-      <div className="di-body" key={visual}>
-        {/* Measured wrapper (auto height) drives the surface height so it morphs to fit. */}
-        <div ref={bodyRef}>
+      {/* One fade per state group; states inside a group (listening → speaking) update in place. */}
+      <div className="di-body" key={group}>
+        <div ref={bodyRef} className="di-measure">
           {visual === 'mini' && <MiniContent />}
-          {visual === 'compact' && <CompactContent onExpand={onExpand} />}
-          {visual === 'voice' && <VoiceContent tools={tools} />}
-          {visual === 'camera' && <CameraContent inVoice={inVoice} />}
+          {visual === 'idle' && <IdleContent onExpand={onExpand} />}
+          {inVoice && <VoiceContent visual={visual} />}
+          {visual === 'working' && <WorkingContent />}
+          {visual === 'notice' && <NoticeContent />}
+          {visual === 'approval' && <ApprovalContent />}
+          {visual === 'camera' && <CameraContent inVoice={voiceActive} />}
           {visual === 'tool' && (
             <div className="di-toolview">
               <ToolStack items={tools.slice(0, 2)} onDismiss={onDismissTool} />
@@ -265,54 +220,51 @@ function Surface({
   )
 }
 
-/* ------------------------------------------------------------------ contents */
+/* ------------------------------------------------------------------ small pieces */
 
-function useStatusLine() {
-  const companion = useCompanion()
-  const booting = useStore((s) => s.boot !== 'ready')
-  if (booting) return 'Starting…'
-  if (companion.state === 'idle') return companion.detail ?? 'Ready'
-  if ((companion.state === 'executing' || companion.state === 'waiting_permission') && companion.detail) return `${companion.headline} · ${companion.detail}`
-  return companion.detail && companion.state !== 'offline' ? companion.headline : (companion.detail ?? companion.headline)
+function ProcessingDots({ label = 'Working' }: { label?: string }) {
+  return (
+    <span className="di-dots" role="progressbar" aria-label={label}>
+      <i />
+      <i />
+      <i />
+    </span>
+  )
 }
 
 function MiniContent() {
-  const companion = useCompanion()
-  const level = useStore((s) => s.voiceLevel)
+  const voice = useStore((s) => s.voice)
   return (
     <div className="di-row mini">
-      <Pet state={companion.state} size={34} level={level} />
+      <ZMark size={16} />
+      <span className={`di-state-dot ${voice?.state === 'standby' ? 'on' : ''}`} aria-hidden="true" />
     </div>
   )
 }
 
-function CompactContent({ onExpand }: { onExpand: () => void }) {
-  const companion = useCompanion()
-  const level = useStore((s) => s.voiceLevel)
+function IdleContent({ onExpand }: { onExpand: () => void }) {
   const voice = useStore((s) => s.voice)
-  const status = useStatusLine()
+  const booting = useStore((s) => s.boot !== 'ready')
   const standby = voice?.state === 'standby'
+  const label = booting ? 'Starting…' : standby ? `Say “${voice?.wakePhrase ?? 'Hey Zvyra'}”` : voice?.state === 'error' ? 'Voice needs attention' : 'ZVYRA'
   return (
-    <div className="di-row">
-      <Pet state={companion.state} size={36} level={level} />
-      <div className="di-text">
-        <div className="di-title">ZVYRA</div>
-        <div className="di-sub truncate" aria-live="polite">
-          {status}
-        </div>
-      </div>
-      <button type="button" className="di-wave no-drag" onClick={() => void toggleListening('island')} title={standby ? 'Listening for “Hey Zvyra” — click to talk' : 'Talk to ZVYRA'} aria-label="Talk to ZVYRA">
-        <HelixWave level={level} active={false} width={58} height={24} />
-        {standby && <span className="di-live-dot" />}
-      </button>
+    <div className="di-row idle">
+      <ZMark size={19} />
+      <span className="di-idle-label truncate" aria-live="polite">
+        {label}
+      </span>
+      <span className={`di-state-dot ${standby ? 'on' : ''} ${voice?.state === 'error' ? 'err' : ''}`} title={standby ? 'Listening for the wake word on this PC' : 'Wake word off'} aria-hidden="true" />
       <div className="di-hover-actions no-drag">
-        <button type="button" className="di-icon" onClick={onExpand} aria-label="Expand" title="Expand">
+        <button type="button" className="di-icon xs" onClick={() => void toggleListening('island')} aria-label="Talk to ZVYRA" title="Talk">
+          <Mic />
+        </button>
+        <button type="button" className="di-icon xs" onClick={onExpand} aria-label="Expand" title="Expand">
           <Maximize2 />
         </button>
-        <button type="button" className="di-icon" onClick={() => setMode('mini')} aria-label="Minimize" title="Minimize">
+        <button type="button" className="di-icon xs" onClick={() => setMode('mini')} aria-label="Minimize" title="Minimize">
           <Minus />
         </button>
-        <button type="button" className="di-icon" onClick={() => void attempt(() => shellCall('island.close'))} aria-label="Hide (ZVYRA keeps listening)" title="Hide — ZVYRA keeps listening for “Hey Zvyra”">
+        <button type="button" className="di-icon xs" onClick={() => void attempt(() => shellCall('island.close'))} aria-label="Hide (ZVYRA keeps listening)" title="Hide — ZVYRA keeps listening for the wake word">
           <X />
         </button>
       </div>
@@ -320,73 +272,126 @@ function CompactContent({ onExpand }: { onExpand: () => void }) {
   )
 }
 
-function VoiceContent({ tools }: { tools: ToolActivity[] }) {
+const VOICE_LABEL: Record<string, string> = { listening: 'Listening', speech: 'Listening', processing: 'Thinking', speaking: 'Speaking' }
+
+function VoiceContent({ visual }: { visual: IslandVisual }) {
   const voice = useStore((s) => s.voice)
   const level = useStore((s) => s.voiceLevel)
   const transcript = useStore((s) => s.liveTranscript)
   const interactions = useStore((s) => s.interactions)
-  const companion = useCompanion()
-  const vs = voice?.state
   const reply = interactions[0]?.source === 'voice' ? interactions[0]?.response : undefined
-  const label = vs === 'wake_detected' ? 'Connecting…' : vs === 'speaking' ? 'Speaking' : vs === 'transcribing' ? 'Thinking…' : 'Listening'
-  const line = vs === 'speaking' && reply ? reply : transcript
+  const connecting = voice?.state === 'wake_detected'
+  const line = visual === 'speaking' && reply ? reply : visual === 'listening' && connecting ? '' : transcript
+  const label = connecting ? 'Listening' : VOICE_LABEL[visual]
   return (
-    <div className="di-voice">
+    <div className={`di-voice s-${visual}`}>
       <div className="di-row">
-        <Pet state={companion.state} size={40} level={level} />
-        <div className="di-text">
-          <div className="di-title">{label}</div>
-          <div className="di-sub">{vs === 'speaking' ? 'Talk any time to interrupt' : '“Go to sleep” to finish'}</div>
-        </div>
-        <button type="button" className="di-icon stop no-drag" onClick={() => void attempt(() => call('voice.stopListening'))} aria-label="End conversation" title="End conversation">
+        <span className={`di-mic s-${visual}`} aria-hidden="true">
+          <Mic />
+        </span>
+        <span className="di-voice-label" aria-live="polite">
+          {label}
+        </span>
+        <span className="di-voice-indicator">
+          {visual === 'processing' ? (
+            <ProcessingDots label="Thinking" />
+          ) : (
+            <HelixWave level={visual === 'speech' || visual === 'speaking' ? level : 0} active={visual === 'speech' || visual === 'speaking'} width={80} height={22} tone={visual === 'speaking' ? 'speak' : 'listen'} />
+          )}
+        </span>
+        <button type="button" className="di-icon xs stop no-drag" onClick={() => void attempt(() => call('voice.stopListening'))} aria-label="End conversation" title="End conversation">
           <Square />
         </button>
       </div>
-      <div className="di-wave-big">
-        <HelixWave level={vs === 'speaking' ? Math.max(level, 0.25) : level} active width={380} height={50} tone={vs === 'speaking' ? 'speak' : vs === 'transcribing' ? 'think' : 'listen'} />
-      </div>
-      {line && <div className="di-transcript selectable">{line.length > (tools.length ? 140 : 220) ? '…' + line.slice(-(tools.length ? 140 : 220)) : line}</div>}
-      {!!tools.length && (
-        <div className="di-voice-tools">
-          <ToolStack items={tools.slice(0, 2)} />
-        </div>
+      {line && <div className="di-transcript selectable">{line.length > 120 ? '…' + line.slice(-120) : line}</div>}
+    </div>
+  )
+}
+
+function WorkingContent() {
+  const interactions = useStore((s) => s.interactions)
+  const latest = interactions[0]
+  const action = latest?.status === 'streaming' && latest.response ? latest.response.replace(/…$/, '') : latest?.input
+  return (
+    <div className="di-row working">
+      <ProcessingDots />
+      <span className="di-voice-label">Working</span>
+      <span className="di-sub truncate" title={action}>
+        {action}
+      </span>
+      {latest && (
+        <button type="button" className="di-icon xs stop no-drag" onClick={() => void attempt(() => call('assistant.cancel', { id: latest.id }))} aria-label="Stop" title="Stop">
+          <Square />
+        </button>
       )}
+    </div>
+  )
+}
+
+const NOTICE_ICON = { approved: ShieldCheck, denied: ShieldX, success: Check, error: TriangleAlert, file: FileText, launch: Rocket, info: Info, approval: ShieldCheck }
+
+/** The newest live ZVYRA notification, shown in the island instead of a separate window. */
+function NoticeContent() {
+  const notices = useStore((s) => s.notices)
+  const n = notices.find((x) => x.kind !== 'approval' && Date.parse(x.ts) + (x.timeoutMs > 0 ? x.timeoutMs : NOTICE_MS) > Date.now())
+  if (!n) return null
+  const Icon = NOTICE_ICON[n.kind]
+  const bad = n.kind === 'error' || n.kind === 'denied'
+  return (
+    <div className="di-notice-row" role={bad ? 'alert' : 'status'} aria-live={bad ? 'assertive' : 'polite'}>
+      <div className="di-row">
+        <span className={`di-result ${bad ? 'err' : ''}`} aria-hidden="true">
+          <Icon />
+        </span>
+        <div className="di-text">
+          <div className="di-title truncate">{n.title}</div>
+          {(n.body || n.detail) && (
+            <div className="di-sub truncate" title={n.detail ?? n.body}>
+              {n.body}
+              {n.body && n.detail ? ' · ' : ''}
+              {n.detail && <span className="di-mono">{n.detail}</span>}
+            </div>
+          )}
+        </div>
+        <button type="button" className="di-icon xs no-drag" onClick={() => setState((s) => ({ notices: s.notices.filter((x) => x.id !== n.id) }))} aria-label="Dismiss notification" title="Dismiss">
+          <X />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ApprovalContent() {
+  const permissions = useStore((s) => s.permissions)
+  const p = permissions[0]
+  if (!p) return null
+  return (
+    <div className="di-approval no-drag">
+      {permissions.length > 1 && <div className="di-approval-count">1 of {permissions.length} waiting</div>}
+      <PermissionCard key={p.id} request={p} compact />
     </div>
   )
 }
 
 function PeekContent({ onDismiss }: { onDismiss: () => void }) {
   const interactions = useStore((s) => s.interactions)
-  const permissions = useStore((s) => s.permissions)
-  const companion = useCompanion()
-  const level = useStore((s) => s.voiceLevel)
-  const toasts = useToasts()
   const latest = interactions[0]
-  const working = latest && (latest.status === 'pending' || latest.status === 'streaming')
-  const err = toasts.find((t) => t.tone !== 'success')
+  const failed = latest?.status === 'error'
   return (
     <div className="di-peek">
       <div className="di-row">
-        <Pet state={companion.state} size={36} level={level} />
+        <span className={`di-result ${failed ? 'err' : ''}`} aria-hidden="true">
+          {failed ? <TriangleAlert /> : <Check />}
+        </span>
         <div className="di-text">
-          <div className="di-title">{permissions.length ? 'Needs your OK' : working ? 'Working' : latest?.status === 'error' ? 'Couldn’t finish' : 'Done'}</div>
+          <div className="di-title">{failed ? 'Couldn’t finish' : latest?.status === 'cancelled' ? 'Stopped' : 'Done'}</div>
           <div className="di-sub truncate">{latest?.input}</div>
         </div>
-        {working ? <span className="di-spinner" /> : (
-          <button type="button" className="di-icon no-drag" onClick={onDismiss} aria-label="Dismiss" title="Dismiss">
-            <ChevronDown />
-          </button>
-        )}
+        <button type="button" className="di-icon xs no-drag" onClick={onDismiss} aria-label="Dismiss" title="Dismiss">
+          <ChevronDown />
+        </button>
       </div>
-      {permissions[0] ? (
-        <div className="no-drag" style={{ padding: '2px 4px 6px' }}>
-          <PermissionCard request={permissions[0]} compact />
-        </div>
-      ) : (
-        <div className={`di-reply ${latest?.status === 'error' ? 'error' : ''}`}>
-          {err && !latest ? err.message ?? err.title : latest?.status === 'error' ? (latest.error ?? 'Something went wrong') : (latest?.response ?? 'Thinking…')}
-        </div>
-      )}
+      <div className={`di-reply selectable ${failed ? 'error' : ''}`}>{failed ? (latest?.error ?? 'Something went wrong') : latest?.response}</div>
     </div>
   )
 }
@@ -394,9 +399,7 @@ function PeekContent({ onDismiss }: { onDismiss: () => void }) {
 function ExpandedContent({ onCollapse }: { onCollapse: () => void }) {
   const companion = useCompanion()
   const voice = useStore((s) => s.voice)
-  const level = useStore((s) => s.voiceLevel)
   const interactions = useStore((s) => s.interactions)
-  const permissions = useStore((s) => s.permissions)
   const tasks = useStore((s) => s.tasks)
   const active = useActiveTasks()
   const [text, setText] = useState('')
@@ -408,7 +411,7 @@ function ExpandedContent({ onCollapse }: { onCollapse: () => void }) {
   const needsKey = !!voice && !voice.stt.ready
 
   useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 260)
+    const t = setTimeout(() => inputRef.current?.focus(), 200)
     const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && document.activeElement?.tagName !== 'TEXTAREA' && onCollapse()
     window.addEventListener('keydown', onKey)
     return () => {
@@ -442,10 +445,10 @@ function ExpandedContent({ onCollapse }: { onCollapse: () => void }) {
   return (
     <div className="di-expanded">
       <div className="di-row head">
-        <Pet state={companion.state} size={46} level={level} />
+        <ZMark size={26} />
         <div className="di-text">
           <div className="di-title lg">{companion.state === 'idle' ? 'How can I help?' : companion.headline}</div>
-          <div className="di-sub">{companion.detail ?? 'Type, tap the mic, or say “Hey Zvyra”.'}</div>
+          <div className="di-sub">{companion.detail ?? `Type, tap the mic, or say “${voice?.wakePhrase ?? 'Hey Zvyra'}”.`}</div>
         </div>
         <button type="button" className="di-icon no-drag" onClick={onCollapse} aria-label="Collapse" title="Collapse (Esc)">
           <ChevronDown />
@@ -454,7 +457,7 @@ function ExpandedContent({ onCollapse }: { onCollapse: () => void }) {
 
       <div className="di-chips no-drag">
         <button type="button" className={`di-chip ${wakeOn ? 'on' : ''}`} onClick={() => void setWakeWord(!wakeOn)} aria-pressed={wakeOn}>
-          {wakeOn ? <Mic /> : <MicOff />} “Hey Zvyra” {wakeOn ? 'on' : 'off'}
+          {wakeOn ? <Mic /> : <MicOff />} “{voice?.wakePhrase ?? 'Hey Zvyra'}” {wakeOn ? 'on' : 'off'}
         </button>
         <button type="button" className="di-chip" onClick={() => goTo('home')}>
           <ExternalLink /> Open ZVYRA
@@ -468,15 +471,12 @@ function ExpandedContent({ onCollapse }: { onCollapse: () => void }) {
       )}
 
       <div className="di-scroll no-drag">
-        {permissions.slice(0, 2).map((p) => (
-          <PermissionCard key={p.id} request={p} compact />
-        ))}
         {recent.map((i) => (
           <div key={i.id} className="di-exchange">
             <div className="di-you selectable">{i.input}</div>
             {(i.response || i.error || i.status === 'pending') && (
               <div className={`di-ans selectable ${i.status === 'error' ? 'error' : ''}`}>
-                {i.status === 'error' ? i.error : i.response ?? 'Thinking…'}
+                {i.status === 'error' ? i.error : (i.response ?? 'Thinking…')}
                 {(i.status === 'pending' || i.status === 'streaming') && <span className="di-caret" />}
               </div>
             )}
@@ -484,7 +484,7 @@ function ExpandedContent({ onCollapse }: { onCollapse: () => void }) {
         ))}
         {current && <CurrentTask taskId={current.id} />}
         <ToolStack items={liveTools} />
-        {!recent.length && !current && <div className="di-empty">Try “Build me an e-commerce site for sneakers”, “What’s the latest AI news?” or “Open my camera”.</div>}
+        {!recent.length && !current && <div className="di-empty">Try “Make me a calculator”, “Create a simple game” or “Run this project”.</div>}
       </div>
 
       <div className="di-composer no-drag">

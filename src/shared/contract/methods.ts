@@ -20,6 +20,8 @@ import type {
   AutomationRun,
   CallProviderStatus,
   CameraState,
+  CommandRule,
+  CommandShell,
   KeyTestResult,
   SetupProviderId,
   SetupState,
@@ -124,6 +126,10 @@ export interface ZvyraMethods {
   'permissions.respond': M<{ id: string; decision: PermissionDecision }, void>
   'permissions.policies': M<void, PermissionPolicyEntry[]>
   'permissions.setPolicy': M<{ category: PermissionCategory; policy: PermissionPolicy }, PermissionPolicyEntry[]>
+  /** (1.4.0) Saved "Always allow" command rules. */
+  'permissions.rules': M<void, CommandRule[]>
+  /** (1.4.0) Revoke one saved rule; returns the remaining rules. */
+  'permissions.revokeRule': M<Id, CommandRule[]>
 
   /* Chat -------------------------------------------------------------- */
   'chat.list': M<{ projectId?: string }, Conversation[]>
@@ -176,7 +182,8 @@ export interface ZvyraMethods {
   'code.openInEditor': M<{ projectId?: string; path?: string }, void>
 
   /* Terminal (backend enforces run_commands permission) -------------- */
-  'terminal.run': M<{ command: string; cwd?: string; projectId?: string }, TerminalRun>
+  /** (1.4.0) `shell` picks Command Prompt or Windows PowerShell (default). */
+  'terminal.run': M<{ command: string; cwd?: string; projectId?: string; shell?: CommandShell }, TerminalRun>
   'terminal.kill': M<Id, TerminalRun>
   'terminal.runs': M<{ limit?: number }, TerminalRun[]>
   'terminal.openExternal': M<{ cwd?: string }, void>
@@ -272,7 +279,8 @@ export const METHOD_NAMES = [
   'assistant.submit', 'assistant.cancel', 'assistant.recent',
   'tasks.list', 'tasks.get', 'tasks.events', 'tasks.create', 'tasks.cancel', 'tasks.pause', 'tasks.resume', 'tasks.retry',
   'tasks.message', 'tasks.delete', 'tasks.clearHistory',
-  'permissions.pending', 'permissions.respond', 'permissions.policies', 'permissions.setPolicy',
+  'permissions.pending', 'permissions.respond', 'permissions.policies', 'permissions.setPolicy', 'permissions.rules',
+  'permissions.revokeRule',
   'chat.list', 'chat.create', 'chat.rename', 'chat.delete', 'chat.setModel', 'chat.messages', 'chat.send', 'chat.stop',
   'chat.retry', 'chat.pickAttachments', 'chat.runAsTask',
   'swarm.connection', 'swarm.configure', 'swarm.test', 'models.list', 'routing.get', 'routing.set',

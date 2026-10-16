@@ -248,7 +248,7 @@ async function runExtra(host: ToolHost, name: string, args: Record<string, unkno
       }
       const hit = (await youtubeSearch(query, 1).catch(() => []))[0]
       const target = hit?.url ?? youtubeResultsUrl(query)
-      const opened = await runDesktopTool(host, 'open', { target, app: str('app') || undefined })
+      const opened = await runDesktopTool(host, 'open', { target, app: str('app') || undefined }, signal)
       if (opened['error']) return opened
       host.activity('media.play', `Playing: ${hit?.title ?? query}`, target)
       return hit ? { ok: true, playing: hit.title ?? query, channel: hit.channel, length: hit.length, url: hit.url } : { ok: true, note: `Opened YouTube results for “${query}”.` }
@@ -331,7 +331,7 @@ export async function runTool(host: ToolHost, name: string, args: Record<string,
   const card: ToolActivity | null = meta ? { id: randomUUID(), tool: name, ...meta, status: 'running', startedAt, updatedAt: startedAt } : null
   if (card) host.toolActivity(card)
   try {
-    const r = (await runExtra(host, name, args, signal)) ?? (await runDesktopTool(host, name, args))
+    const r = (await runExtra(host, name, args, signal)) ?? (await runDesktopTool(host, name, args, signal))
     if (card) {
       const err = typeof r['error'] === 'string' ? (r['error'] as string) : undefined
       const label = err ? `${card.label} failed` : (DONE_LABEL[card.label] ?? card.label)

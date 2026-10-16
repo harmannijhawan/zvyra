@@ -7,7 +7,7 @@ import { getState, setState, useStore } from '../../lib/store'
 import { reportError } from '../../lib/useAction'
 import { toAccelerator } from '../../lib/accelerator'
 
-export function Row({ label, help, children }: { label: string; help?: ReactNode; children: ReactNode }) {
+export function Row({ label, help, children }: { label: ReactNode; help?: ReactNode; children: ReactNode }) {
   return (
     <div className="set-row">
       <div className="set-text">

@@ -70,6 +70,12 @@ type Phase = 'off' | 'standby' | 'connecting' | 'listening' | 'speaking'
 const PRE_ROLL_FRAMES = 60 // 6 s of 100 ms frames buffered while the session opens
 const BARGE_RMS = 0.045
 const BARGE_FRAMES = 3
+/** Voice activity thresholds for the "speech detected" indicator (echo-cancelled mic RMS). */
+const SPEECH_RMS = 0.03
+const SILENCE_RMS = 0.018
+const SPEECH_MIN_MS = 150
+/** If the model hasn't started answering this long after the user stopped, drop the "processing" state. */
+const REPLY_GUARD_MS = 12_000
 
 // Builder-only tools stay with the background agent; voice hands big builds to run_task.
 const VOICE_SKIP = new Set(['edit_file', 'list_tree', 'check_site'])
@@ -110,6 +116,14 @@ export class VoiceEngine {
   private ipcBound = false
   private micRetries = 0
   private captureDevice: string | null | undefined = undefined
+  /* Live interaction state (drives the Dynamic Island; all derived from real audio / session events). */
+  private userSpeaking = false
+  private speechSince = 0
+  private quietSince = 0
+  /** The user finished an utterance and ZVYRA hasn't answered yet. */
+  private awaitingReply = false
+  private awaitTimer: NodeJS.Timeout | null = null
+  private toolsRunning = 0
 
   constructor(private readonly d: VoiceEngineDeps) {}
 
@@ -125,7 +139,9 @@ export class VoiceEngine {
       case 'connecting':
         return 'wake_detected'
       case 'listening':
-        return this.modelTurnActive ? 'transcribing' : 'listening'
+        // "Processing": the model is producing a turn, a tool is running, or the user
+        // finished speaking and the reply hasn't started yet.
+        return this.modelTurnActive || this.toolsRunning > 0 || (this.awaitingReply && !this.userSpeaking) ? 'transcribing' : 'listening'
       case 'speaking':
         return 'speaking'
     }
@@ -147,8 +163,62 @@ export class VoiceEngine {
       micLabel: this.micLabel ?? undefined,
       partialTranscript: this.partial || undefined,
       lastTranscript: this.lastTranscript,
-      error: this.error
+      error: this.error,
+      userSpeaking: this.phase === 'listening' && this.userSpeaking
     }
+  }
+
+  /* ================================================================ live interaction state */
+
+  /** On-device voice activity detection while a conversation is open (100 ms frames). */
+  private trackSpeech(rms: number, now: number) {
+    const cfg = this.d.getConfig()
+    if (rms > SPEECH_RMS) {
+      this.quietSince = 0
+      if (!this.speechSince) this.speechSince = now
+      if (!this.userSpeaking && now - this.speechSince >= SPEECH_MIN_MS) {
+        this.userSpeaking = true
+        this.setAwaiting(false)
+        this.publish()
+      }
+      return
+    }
+    this.speechSince = 0
+    if (!this.userSpeaking) return
+    if (rms < SILENCE_RMS) {
+      if (!this.quietSince) this.quietSince = now
+      // Same end-of-speech pause the model's own detector uses.
+      if (now - this.quietSince >= Math.min(3000, Math.max(300, cfg.silenceMs))) {
+        this.userSpeaking = false
+        this.quietSince = 0
+        this.setAwaiting(true)
+        this.publish()
+      }
+    }
+  }
+
+  /** Waiting for ZVYRA's answer. A guard clears it if the model never responds (noise, dropped turn). */
+  private setAwaiting(on: boolean) {
+    if (this.awaitTimer) clearTimeout(this.awaitTimer)
+    this.awaitTimer = null
+    this.awaitingReply = on
+    if (on) {
+      const session = this.sessionId
+      this.awaitTimer = setTimeout(() => {
+        this.awaitTimer = null
+        if (session !== this.sessionId || !this.awaitingReply) return
+        this.awaitingReply = false
+        this.publish()
+      }, REPLY_GUARD_MS)
+    }
+  }
+
+  private resetLive() {
+    this.userSpeaking = false
+    this.speechSince = 0
+    this.quietSince = 0
+    this.toolsRunning = 0
+    this.setAwaiting(false)
   }
 
   private publish() {
@@ -333,6 +403,7 @@ export class VoiceEngine {
       case 'listening':
         this.send(pcm)
         if (rms > 0.02) this.touch()
+        this.trackSpeech(rms, now)
         return
       case 'speaking': {
         // Barge-in: sustained speech over the (echo-cancelled) mic interrupts the reply.
@@ -343,6 +414,11 @@ export class VoiceEngine {
           this.cmd({ type: 'flush' })
           this.phase = 'listening'
           this.modelTurnActive = false
+          // The user is talking over the reply: that's speech, not processing.
+          this.setAwaiting(false)
+          this.userSpeaking = true
+          this.speechSince = now
+          this.quietSince = 0
           this.touch()
           this.publish()
           this.send(pcm)
@@ -674,6 +750,7 @@ export class VoiceEngine {
     if (sc.interrupted) {
       this.cmd({ type: 'flush' })
       this.modelTurnActive = false
+      this.setAwaiting(false)
       if (this.phase === 'speaking') this.phase = 'listening'
       this.finishInteraction('done')
       this.publish()
@@ -695,6 +772,8 @@ export class VoiceEngine {
         this.modelTurnActive = true
         this.lastTranscript = this.partial.trim() || this.lastTranscript
       }
+      if (this.awaitingReply) this.setAwaiting(false)
+      this.userSpeaking = false
       this.drained = false
       if (this.phase !== 'speaking' && !this.speakOnly) {
         this.phase = 'speaking'
@@ -719,6 +798,7 @@ export class VoiceEngine {
       }
       this.partial = ''
       this.finishInteraction('done')
+      if (!this.toolsRunning) this.setAwaiting(false)
       if (this.drained && this.phase === 'speaking') this.phase = 'listening'
       if (this.endAfterTurn && this.drained) this.sleep('conversation ended')
       this.touch()
@@ -728,24 +808,39 @@ export class VoiceEngine {
 
   private async onToolCall(calls: { id?: string; name?: string; args?: Record<string, unknown> }[]) {
     const responses = []
-    for (const c of calls) {
-      let response: Record<string, unknown>
-      try {
-        this.touch()
-        if (c.name === 'end_conversation') {
-          this.endAfterTurn = true
-          response = { ok: true }
-        } else {
-          response = await runTool(this.d.tools.host, c.name ?? '', c.args ?? {})
-          if (typeof response['taskId'] === 'string') this.upsertInteraction({ taskId: response['taskId'] })
+    const session = this.sessionId
+    this.toolsRunning++
+    this.userSpeaking = false
+    this.publish()
+    try {
+      for (const c of calls) {
+        let response: Record<string, unknown>
+        try {
+          this.touch()
+          if (c.name === 'end_conversation') {
+            this.endAfterTurn = true
+            response = { ok: true }
+          } else {
+            response = await runTool(this.d.tools.host, c.name ?? '', c.args ?? {})
+            if (typeof response['taskId'] === 'string') this.upsertInteraction({ taskId: response['taskId'] })
+          }
+          this.d.logger.info('voice', `tool ${c.name}`, { ok: !response['error'], error: response['error'] as string | undefined })
+          this.touch()
+        } catch (err) {
+          response = { error: err instanceof Error ? err.message : String(err) }
         }
-        this.d.logger.info('voice', `tool ${c.name}`, { ok: !response['error'], error: response['error'] as string | undefined })
-        this.touch()
-      } catch (err) {
-        response = { error: err instanceof Error ? err.message : String(err) }
+        responses.push({ id: c.id, name: c.name, response })
       }
-      responses.push({ id: c.id, name: c.name, response })
+    } finally {
+      // A conversation that ended meanwhile already reset the counter.
+      if (session === this.sessionId && this.toolsRunning > 0) this.toolsRunning--
+      // The model answers the tool result next: keep showing "processing" until it does.
+      if (session === this.sessionId) {
+        this.setAwaiting(true)
+        this.publish()
+      }
     }
+    if (session !== this.sessionId) return
     try {
       this.session?.sendToolResponse({ functionResponses: responses })
     } catch (err) {
@@ -797,6 +892,7 @@ export class VoiceEngine {
     if (this.idleTimer) clearTimeout(this.idleTimer)
     this.idleTimer = null
     this.modelTurnActive = false
+    this.resetLive()
     this.finishInteraction('done')
   }
 

@@ -1,6 +1,6 @@
 import { ExternalLink, Play, ShieldAlert, Square, SquareTerminal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { FileRoot } from '@shared/contract'
+import type { CommandShell, FileRoot } from '@shared/contract'
 import { CapabilityNotice } from '../../components/CapabilityNotice'
 import { Badge, Button, Card } from '../../components/ui'
 import { call } from '../../lib/client'
@@ -13,6 +13,7 @@ export function TerminalModule() {
   const output = useStore((s) => s.terminalOutput)
   const [roots, setRoots] = useState<FileRoot[]>([])
   const [cwd, setCwd] = useState('')
+  const [shell, setShell] = useState<CommandShell>('powershell')
   const [command, setCommand] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [history, setHistory] = useState<string[]>([])
@@ -41,7 +42,7 @@ export function TerminalModule() {
   const exec = async () => {
     const cmd = command.trim()
     if (!cmd) return
-    const r = await run(() => call('terminal.run', { command: cmd, cwd: cwd || undefined }))
+    const r = await run(() => call('terminal.run', { command: cmd, cwd: cwd || undefined, shell }))
     if (r) {
       setState((s) => ({ terminalRuns: { ...s.terminalRuns, [r.id]: r } }))
       setSelected(r.id)
@@ -56,7 +57,7 @@ export function TerminalModule() {
       <CapabilityNotice cap="terminal" what="Running commands" />
       <div className="notice">
         <ShieldAlert />
-        <span>Every command goes through ZVYRA’s “Run commands” permission. The backend asks for approval before running anything when that permission is set to Ask.</span>
+        <span>Every command is risk-checked before it runs. High-risk commands (deleting files, registry, services) show an approval in the Dynamic Island; dangerous system commands are blocked. Commands time out after 15 minutes and can be stopped.</span>
       </div>
       <Card
         title="Run a command"
@@ -75,6 +76,10 @@ export function TerminalModule() {
                 {r.label}
               </option>
             ))}
+          </select>
+          <select className="select" style={{ width: 150 }} value={shell} onChange={(e) => setShell(e.target.value === 'cmd' ? 'cmd' : 'powershell')} aria-label="Shell">
+            <option value="powershell">PowerShell</option>
+            <option value="cmd">Command Prompt</option>
           </select>
           <input
             className="input mono"
@@ -95,7 +100,7 @@ export function TerminalModule() {
                 setCommand(i >= 0 ? history[i] : '')
               }
             }}
-            placeholder="npm test"
+            placeholder={shell === 'cmd' ? 'dir /b && npm test' : 'Get-ChildItem; npm test'}
             aria-label="Command"
             spellCheck={false}
           />
