@@ -65,31 +65,32 @@ export const DOWNLOADS = {
     ]
   },
 
-  // TODO(macOS): a native macOS build is in progress; no installer or hosted URL exists yet
-  // (URL MISSING). When a real build ships, set status: 'available', url ('https://…' or a
-  // self-hosted '/downloads/<file>'), format ('DMG' | 'ZIP', whichever the real build is),
-  // compatibility (real arch / OS line), and optionally version/fileName/sizeBytes/sha256.
-  // Do not guess DMG vs ZIP or Apple Silicon vs Intel.
+  // The release page lets Mac owners select the correct native architecture.
   macos: {
     id: 'macos',
     name: 'macOS',
     ctaLabel: 'Download for macOS',
-    status: 'coming-soon',
-    statusLabel: 'Coming soon',
-    statusNote: 'The macOS version is coming soon. ZVYRA is available for Windows today.',
-    url: null,
-    format: null,
-    formatDetail: null,
+    status: 'available',
+    statusLabel: null,
+    statusNote: 'macOS preview installers for Apple Silicon and Intel. Choose your Mac on the download page.',
+    url: 'https://github.com/harmannijhawan/zvyra/releases/tag/v0.1.0-macos',
+    format: 'DMG',
+    formatDetail: 'DMG installer or ZIP',
     fileName: null,
-    version: null,
+    version: '0.1.0',
     sizeBytes: null,
     sha256: null,
-    architecture: null,
-    compatibility: null,
-    requirements: []
+    architecture: 'Apple Silicon (arm64) / Intel (x64)',
+    compatibility: 'macOS · Apple Silicon / Intel',
+    requirements: [
+      'Choose arm64 for Apple Silicon or x64 for an Intel Mac on the download page',
+      'A Google Gemini API key and a microphone for voice conversations',
+      'Preview build: unsigned and not notarized',
+      'Allow microphone and Accessibility permissions for voice and desktop control'
+    ]
   },
 
-  // TODO(iOS): no iOS app exists (URL MISSING). If one ships on the App Store, set
+  // iOS currently has preview source only. If it ships on the App Store, set
   // status: 'available', url: 'https://apps.apple.com/…', format: 'APP_STORE' and
   // update statusLabel/statusNote.
   ios: {

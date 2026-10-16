@@ -4,8 +4,8 @@ import { HeroShowcase } from '../components/HeroShowcase'
 import type { VisitorPlatform } from '../lib/platform'
 
 const HINTS: Partial<Record<VisitorPlatform, string>> = {
-  macos: 'On a Mac? The macOS version is coming soon. ZVYRA is available for Windows today.',
-  mobile: 'ZVYRA runs on Windows PCs. Open this page on your computer to download.'
+  macos: 'Choose the Apple Silicon (arm64) or Intel (x64) installer for your Mac.',
+  mobile: 'ZVYRA runs on Windows and macOS. Open this page on your computer to download.'
 }
 
 export function Hero({ platform }: { platform: VisitorPlatform }) {
@@ -15,7 +15,7 @@ export function Hero({ platform }: { platform: VisitorPlatform }) {
       <div className="hero__copy">
         <p className="badge glass enter" style={{ ['--i' as string]: 0 }}>
           <span className="badge__dot" aria-hidden="true" />
-          Now available for Windows
+          Available for Windows & macOS
           {winVersion && <span className="badge__ver">v{winVersion}</span>}
         </p>
 

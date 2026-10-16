@@ -15,3 +15,4 @@ release/
 *.pfx
 .vercel/
 coverage/
+.publish-proof/
