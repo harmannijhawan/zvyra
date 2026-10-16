@@ -44,6 +44,7 @@ const handlers: ShellHandlers = {
   'island.resetPosition': () => ISLAND_STATE,
   'island.setInteractive': () => undefined,
   'island.moveTo': () => undefined,
+  'island.reveal': () => ISLAND_STATE,
   'main.show': () => MAIN_STATE,
   'main.state': () => MAIN_STATE,
   'main.minimize': () => MAIN_STATE,
