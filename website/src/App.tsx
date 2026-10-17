@@ -1,4 +1,5 @@
-﻿import { usePlatform } from './lib/platform'
+import { SpeedInsights } from '@vercel/speed-insights/react'
+import { usePlatform } from './lib/platform'
 import { Nav } from './sections/Nav'
 import { Hero } from './sections/Hero'
 import { Experience } from './sections/Experience'
@@ -22,6 +23,7 @@ export function App() {
         <FinalCta platform={platform} />
       </main>
       <Footer />
+      <SpeedInsights />
     </>
   )
 }
