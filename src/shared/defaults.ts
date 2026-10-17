@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     ttsRate: 1,
     speakResponses: true
   },
+  assistant: { stayAwake: true, autonomous: false },
   startup: { openAtLogin: false, startHidden: false },
   tray: { closeToTray: true },
   background: { allowBackgroundTasks: true, maxConcurrentTasks: 2, resumeQueuedOnStart: true },

@@ -55,7 +55,7 @@ export interface CommandOutcome {
   cwd: string
   runId?: string
   url?: string
-  approvedBy?: 'policy' | 'user' | 'rule'
+  approvedBy?: 'policy' | 'user' | 'rule' | 'autonomous'
 }
 
 const shortCmd = (c: string) => (c.length > 90 ? `${c.slice(0, 88)}…` : c).replace(/\s+/g, ' ')
@@ -72,7 +72,9 @@ export class TerminalService {
     private readonly onActivity: Activity,
     private readonly approvals: ApprovalService,
     private readonly classifyContext: (cwd: string) => Promise<CommandContext>,
-    private readonly notify: Notify
+    private readonly notify: Notify,
+    /** Autonomous mode: run medium/high-risk commands without an approval popup. */
+    private readonly isAutonomous: () => boolean = () => false
   ) {
     // Anything persisted as running belongs to a previous process.
     doc.set((s) => ({ runs: s.runs.map((r) => (r.status === 'running' || r.status === 'awaiting_approval' ? { ...r, status: 'killed' as const, finishedAt: r.finishedAt ?? new Date().toISOString() } : r)) }))
@@ -124,7 +126,11 @@ export class TerminalService {
     let approvedBy: CommandOutcome['approvedBy'] = 'policy'
     if (needsApproval(op)) {
       const rule = this.approvals.findRule(op)
-      if (rule) {
+      if (this.isAutonomous()) {
+        // Autonomous mode (Settings → Permissions): no popup. Still classified, logged and re-verified.
+        approvedBy = 'autonomous'
+        this.onActivity('permission.autonomous', `Ran without asking (autonomous): ${shortCmd(text)}`, `${classification.risk} risk · ${dir}`, classification.risk === 'high' ? 'warning' : 'info')
+      } else if (rule) {
         approvedBy = 'rule'
         this.approvals.touchRule(rule.id)
         this.onActivity('permission.rule', `Allowed by a saved rule: ${shortCmd(text)}`, dir)

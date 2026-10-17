@@ -56,6 +56,7 @@ import { Scheduler, type SchedulerState } from './scheduler'
 import { SecretStore } from './secrets'
 import { TerminalService, type Notify, type TerminalState } from './terminal'
 import { ApprovalService, type RulesState } from './approvals'
+import { AgentTasks, type AgentTasksState } from './agentTasks'
 import type { CommandContext } from './commandRisk'
 import { PROJECTS_DIR, resolveUserPath } from '../voice/desktopTools'
 import { pcControl } from '../tools/pcControl'
@@ -78,9 +79,11 @@ interface Prefs {
   activity: ActivityEntry[]
   /** First-run setup finished. */
   onboarded: boolean
+  assistant: AppSettings['assistant']
 }
 
 const PREFS_DEFAULT: Prefs = {
+  assistant: { stayAwake: true, autonomous: false },
   voice: {},
   notify: DEFAULT_NOTIFICATION_POLICY,
   notifyImported: false,
@@ -162,7 +165,8 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       voice: v.ttsVoice && GEMINI_VOICES.some((x) => x.name === v.ttsVoice) ? v.ttsVoice : DEFAULT_VOICE,
       idleTimeoutSec: v.listenTimeoutSec ?? 15,
       silenceMs: v.silenceTimeoutMs ?? 800,
-      speakingRate: v.ttsRate ?? 1
+      speakingRate: v.ttsRate ?? 1,
+      stayAwake: prefs.get().assistant?.stayAwake ?? true
     }
   }
   const voiceInteractions: Interaction[] = []
@@ -258,7 +262,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     throw new ZvyraError('PERMISSION_DENIED', `Commands can only run in your user folders or folders you authorised in Files. “${real}” is outside them.`)
   }
   const classifyContext = async (cwd: string): Promise<CommandContext> => ({ cwd, home: homedir(), allowedRoots: await allowedRoots(), env: process.env })
-  const terminal = new TerminalService(terminalDoc, resolveCommandCwd, emit, activity, approvals, classifyContext, notify)
+  const terminal = new TerminalService(terminalDoc, resolveCommandCwd, emit, activity, approvals, classifyContext, notify, () => !!prefs.get().assistant?.autonomous)
   const apps = new AppsService(appsDoc, activity)
   const calls = new CallService(callsDoc, secrets, activity)
 
@@ -312,9 +316,11 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         ttsProvider: 'gemini-live',
         ttsVoice: v.voice,
         ttsRate: v.speakingRate
-      }
+      },
+      assistant: { ...PREFS_DEFAULT.assistant, ...prefs.get().assistant }
     })
   }
+  const autonomous = () => !!prefs.get().assistant?.autonomous
 
   /* --------------------------------------------------------------- notifications */
 
@@ -460,6 +466,13 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   const builds = new Map<string, AbortController>()
   const buildCards = new Map<string, ToolActivity & { files?: string[] }>()
   const toolActivity = (a: ToolActivity) => emit('tool.activity', a)
+  const agentTasksDoc = new JsonDoc<AgentTasksState>(join(dir, 'agent-tasks.json'), { tasks: [], events: {} })
+  docs.push(agentTasksDoc as never)
+  const agentTasks = new AgentTasks(
+    agentTasksDoc,
+    (t) => emit('task.upsert', t),
+    (e) => emit('task.event', e)
+  )
 
   function startBuild(instruction: string) {
     const id = randomUUID()
@@ -476,6 +489,8 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     activity('task.started', `Builder started: ${instruction.slice(0, 90)}`, undefined, 'info')
     const ctrl = new AbortController()
     builds.set(id, ctrl)
+    // Every builder job is a real task in the Tasks screen.
+    const task = agentTasks.start(instruction, 'voice', ctrl)
     // Fresh agent per job so parallel builds never share conversation history.
     const builder = new TextAgent(() => secrets.get(GEMINI_KEY), toolHost, systemContext, ctx.logger)
     void builder
@@ -483,24 +498,45 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         instruction,
         (u) => {
           if (u.files) files = u.files
-          if (u.action) update({ steps: [...(card.steps ?? []), u.action].slice(-8), summary: files.length ? `${files.length} file${files.length === 1 ? '' : 's'} written` : 'Planning…' })
-          else if (u.thinking) update({ summary: files.length ? `${files.length} file${files.length === 1 ? '' : 's'} written · ${u.thinking}` : u.thinking })
+          if (u.action) {
+            agentTasks.step(task.id, u.action)
+            update({ steps: [...(card.steps ?? []), u.action].slice(-8), summary: files.length ? `${files.length} file${files.length === 1 ? '' : 's'} written` : 'Planning…' })
+          } else if (u.thinking) {
+            agentTasks.progress(task.id, u.thinking)
+            update({ summary: files.length ? `${files.length} file${files.length === 1 ? '' : 's'} written · ${u.thinking}` : u.thinking })
+          }
         },
         ctrl.signal
       )
       .then((r) => {
         update({ status: 'done', label: 'Built', summary: r.reply.slice(0, 900) })
+        agentTasks.finish(task.id, { status: 'completed', summary: r.reply, files: r.files })
         activity('task.completed', `Builder finished: ${instruction.slice(0, 80)}`, r.files[0], 'success')
-        notify({ key: `task:${id}`, kind: 'success', title: 'Task completed', body: r.reply.slice(0, 220), detail: r.files[0] ? r.files[0].replace(/[\\/][^\\/]+$/, '') : undefined, timeoutMs: 8000 })
+        notify({ key: `task:${id}`, kind: 'success', title: 'Build finished — done', body: r.reply.slice(0, 220), detail: r.files[0] ? r.files[0].replace(/[\\/][^\\/]+$/, '') : undefined, timeoutMs: 9000 })
+        announce(`Done! Your build is finished: ${shortTitle(task.title)}.`)
       })
       .catch((err) => {
         const why = friendlyError(err).replace(/^Gemini Live: /, '')
         update({ status: 'error', label: 'Build stopped', summary: why })
+        agentTasks.finish(task.id, ctrl.signal.aborted ? { status: 'cancelled' } : { status: 'failed', error: why, files })
         activity('task.failed', `Builder stopped: ${instruction.slice(0, 80)}`, String((err as Error)?.message ?? err).slice(0, 200), 'error')
-        if (!ctrl.signal.aborted) notify({ key: `task:${id}`, kind: 'error', title: 'Task failed', body: why, detail: instruction.slice(0, 120), timeoutMs: 10_000 })
+        if (!ctrl.signal.aborted) {
+          notify({ key: `task:${id}`, kind: 'error', title: 'Build failed', body: why, detail: instruction.slice(0, 120), timeoutMs: 10_000 })
+          announce(`Sorry, the build stopped: ${why}`)
+        }
       })
       .finally(() => builds.delete(id))
-    return { id, title: instruction.slice(0, 60), status: 'running' }
+    return { id: task.id, title: task.title, status: 'running' }
+  }
+
+  /** Spoken heads-up in ZVYRA's voice (respects Settings → Voice → speak responses). */
+  const announce = (text: string) => {
+    if (prefs.get().voice.speakResponses === false || !secrets.has(GEMINI_KEY)) return
+    void voice.speak(text.slice(0, 300)).catch((e) => ctx.logger.warn('voice', 'announce failed', { message: String((e as Error)?.message ?? e) }))
+  }
+  const shortTitle = (t: string) => {
+    const w = t.replace(/^(please\s+)?(make|build|create|generate)\s+(me\s+)?/i, '').split(/\s+/)
+    return w.slice(0, 8).join(' ') + (w.length > 8 ? '…' : '')
   }
 
   /** Timers and other one-off alerts: right-side ZVYRA notification (the shell falls back to a native one). */
@@ -596,6 +632,9 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   const agent = new TextAgent(() => secrets.get(GEMINI_KEY), toolHost, systemContext, ctx.logger)
   const agentRuns = new Map<string, AbortController>()
 
+  /** Agent steps that mean real work on the PC (see textAgent ACTION_LABEL). */
+  const WORK_ACTION = /^(Writing|Fixing|Running|Opening|Launching|Closing|Inspecting|Testing|Pressing|PC:|minimize|maximize|restore|focus|minimize_all|restore_all)/i
+
   /** Typed commands from the island / Home go straight to the desktop agent. */
   async function submitToAgent(text: string, source: Interaction['source']): Promise<Interaction> {
     const now = new Date().toISOString()
@@ -612,6 +651,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     const ctrl = new AbortController()
     agentRuns.set(i.id, ctrl)
     const steps: string[] = []
+    let taskId: string | null = null
     // Once the agent starts writing files it's a build: show a live build card in the island.
     let card: ToolActivity | null = null
     const updateCard = (patch: Partial<ToolActivity>) => {
@@ -623,10 +663,20 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       .run(
         text,
         (u) => {
-          if (u.thinking && !u.action) updateCard({ summary: u.thinking })
+          if (u.thinking && !u.action) {
+            updateCard({ summary: u.thinking })
+            if (taskId) agentTasks.progress(taskId, u.thinking)
+          }
           if (u.action) {
             steps.push(u.action)
             push({ status: 'streaming', response: `${u.action}…` })
+            // Real work (files, commands, apps) becomes a task in the Tasks screen; quick look-ups don't.
+            if (!taskId && WORK_ACTION.test(u.action)) {
+              taskId = agentTasks.start(text, source, ctrl).id
+              for (const s of steps.slice(0, -1)) agentTasks.step(taskId, s)
+              push({ taskId })
+            }
+            if (taskId) agentTasks.step(taskId, u.action)
             if (!card && (u.files?.length || /^Writing /.test(u.action))) {
               const now = new Date().toISOString()
               card = { id: `build-${i.id}`, tool: 'agent', kind: 'build', label: 'Building', subject: text.slice(0, 160), status: 'running', steps: [], startedAt: now, updatedAt: now }
@@ -639,13 +689,17 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       .then((r) => {
         push({ status: 'done', response: r.reply })
         updateCard({ status: 'done', label: 'Built', summary: r.reply.slice(0, 900) })
+        const failed = r.actions.filter((a) => /— failed$/.test(a)).length
+        const bad = !!failed && !r.files.length
+        if (taskId) agentTasks.finish(taskId, bad ? { status: 'failed', error: r.reply, files: r.files } : { status: 'completed', summary: r.reply, files: r.files })
+        // A finished build is announced out loud, like the background builder.
+        if (r.files.length && !bad) announce(`Done! Your build is finished: ${shortTitle(text)}.`)
         // Only real work gets a notification; plain answers stay in the island.
         if (r.files.length || r.actions.some((a) => !/— failed$/.test(a) && !/^(Checking status|Reading|Looking in|Reviewing)/.test(a))) {
-          const failed = r.actions.filter((a) => /— failed$/.test(a)).length
           notify({
             key: `task:${i.id}`,
-            kind: failed && !r.files.length ? 'error' : 'success',
-            title: failed && !r.files.length ? 'Task finished with problems' : 'Task completed',
+            kind: bad ? 'error' : 'success',
+            title: bad ? 'Task finished with problems' : r.files.length ? 'Build finished — done' : 'Task completed',
             body: r.reply.slice(0, 220),
             detail: r.files.length ? (r.files.length === 1 ? r.files[0] : `${r.files.length} files in ${r.files[0].replace(/[\\/][^\\/]+$/, '')}`) : undefined,
             timeoutMs: 8000
@@ -657,6 +711,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         const why = friendlyError(err).replace(/^Gemini Live: /, '')
         push({ status: ctrl.signal.aborted ? 'cancelled' : 'error', error: why, response: steps.length ? `${steps.join(' → ')}` : undefined })
         updateCard({ status: 'error', label: 'Build stopped', summary: why })
+        if (taskId) agentTasks.finish(taskId, ctrl.signal.aborted ? { status: 'cancelled' } : { status: 'failed', error: why })
         if (!ctrl.signal.aborted) notify({ key: `task:${i.id}`, kind: 'error', title: 'Task failed', body: why, detail: text.slice(0, 120), timeoutMs: 10_000 })
         ctx.logger.warn('agent', 'run failed', { message: msg.slice(0, 300) })
       })
@@ -691,9 +746,9 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       case 'task.event':
         return emit('task.event', dbEvent(e.payload))
       case 'permission.requested':
-        if (e.payload.taskId && allowTask.has(e.payload.taskId)) {
+        if ((e.payload.taskId && allowTask.has(e.payload.taskId)) || autonomous()) {
           void call('permissions.respond', { id: e.payload.id, decision: 'allow_once' })
-            .then(() => activity('permission.auto', `Approved for task: ${e.payload.title}`, 'You allowed this task to continue without asking'))
+            .then(() => activity('permission.auto', `${autonomous() ? 'Approved (autonomous)' : 'Approved for task'}: ${debrand(e.payload.title)}`, autonomous() ? 'Autonomous mode is on' : 'You allowed this task to continue without asking'))
             .catch(() => emit('permission.requested', e.payload))
           return
         }
@@ -871,19 +926,29 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     'system.stopAll': async () => {
       terminal.killAll()
       for (const c of [...builds.values(), ...agentRuns.values()]) c.abort()
+      agentTasks.cancelAll()
       return call('system.stopAll', undefined)
     },
 
     'settings.get': async () => mergeSettings(await call('settings.get', undefined)),
     'settings.update': async (patch) => {
-      const { voice: patchVoice, ...rest } = patch
+      const { voice: patchVoice, assistant: patchAssistant, ...rest } = patch
       const base = Object.keys(rest).length ? await call('settings.update', rest) : await call('settings.get', undefined)
       if (patchVoice) {
         prefs.set((s) => ({ voice: { ...s.voice, ...patchVoice } }))
         voice.refresh()
       }
+      if (patchAssistant) {
+        const next = { ...PREFS_DEFAULT.assistant, ...prefs.get().assistant }
+        if (typeof patchAssistant.stayAwake === 'boolean') next.stayAwake = patchAssistant.stayAwake
+        if (typeof patchAssistant.autonomous === 'boolean') next.autonomous = patchAssistant.autonomous
+        const was = prefs.get().assistant?.autonomous
+        prefs.set({ assistant: next })
+        if (was !== next.autonomous) activity('permission.mode', next.autonomous ? 'Autonomous mode on' : 'Autonomous mode off', next.autonomous ? 'Commands run without asking; blocked commands stay blocked' : 'Risky commands ask first again', next.autonomous ? 'warning' : 'info')
+        voice.refresh()
+      }
       const merged = mergeSettings(base)
-      if (patchVoice) emit('settings.changed', merged)
+      if (patchVoice || patchAssistant) emit('settings.changed', merged)
       return merged
     },
 
@@ -970,35 +1035,72 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
 
     'tasks.list': async (a) => {
       const hidden = hiddenTasks()
-      return (await call('tasks.list', a)).filter((t) => !hidden.has(t.id)).map(dbTask)
+      const engine = (await call('tasks.list', a).catch(() => [] as Task[])).filter((t) => !hidden.has(t.id)).map(dbTask)
+      const mine = a?.projectId ? [] : agentTasks.list().filter((t) => !a?.status?.length || a.status.includes(t.status))
+      return [...mine, ...engine].sort((x, y) => y.createdAt.localeCompare(x.createdAt)).slice(0, a?.limit ?? 200)
     },
-    'tasks.get': async (a) => dbTask(await call('tasks.get', a)),
-    'tasks.events': async (a) => (await call('tasks.events', a)).map(dbEvent),
+    'tasks.get': async (a) => agentTasks.get(a.id) ?? dbTask(await call('tasks.get', a)),
+    'tasks.events': async (a) => (agentTasks.has(a.id) ? agentTasks.events(a.id, a.limit) : (await call('tasks.events', a)).map(dbEvent)),
     'tasks.create': (a) => createTask(a),
-    'tasks.retry': async (a) => dbTask(await call('tasks.retry', a)),
-    'tasks.message': (a) =>
-      prefer('tasks.message', a, async () => {
+    'tasks.cancel': async (a) => {
+      if (!agentTasks.has(a.id)) return dbTask(await call('tasks.cancel', a))
+      agentTasks.cancel(a.id)
+      return agentTasks.get(a.id)!
+    },
+    'tasks.pause': async (a) => {
+      if (agentTasks.has(a.id)) throw new ZvyraError('INVALID_ARGS', 'This task can’t be paused. Stop it instead.')
+      return dbTask(await call('tasks.pause', a))
+    },
+    'tasks.resume': async (a) => {
+      if (agentTasks.has(a.id)) throw new ZvyraError('INVALID_ARGS', 'This task can’t be resumed. Retry it instead.')
+      return dbTask(await call('tasks.resume', a))
+    },
+    'tasks.retry': async (a) => {
+      const t = agentTasks.get(a.id)
+      if (!t) return dbTask(await call('tasks.retry', a))
+      if (!secrets.has(GEMINI_KEY)) throw new ZvyraError('NOT_CONFIGURED', 'Add a Gemini API key to run this again', 'settings/voice')
+      return agentTasks.get(startBuild(t.instruction).id)!
+    },
+    'tasks.message': (a) => {
+      const t = agentTasks.get(a.id)
+      if (t) {
+        if (!secrets.has(GEMINI_KEY)) throw new ZvyraError('NOT_CONFIGURED', 'Add a Gemini API key to continue this task', 'settings/voice')
+        activity('task.followup', 'Follow-up task started', a.text.slice(0, 120))
+        return agentTasks.get(startBuild(`Follow-up to “${t.instruction.slice(0, 300)}” (earlier result: ${(t.summary ?? t.error ?? '').slice(0, 400)}): ${a.text}`).id)!
+      }
+      return prefer('tasks.message', a, async () => {
         const t = await call('tasks.get', { id: a.id })
         const original = t.instruction.split('\n\nContext from saved memory:')[0]
         const next = await createTask({ instruction: `Follow-up to “${original.slice(0, 300)}”: ${a.text}`, source: t.source, projectId: t.projectId, model: t.model })
         activity('task.followup', 'Follow-up task started', a.text.slice(0, 120))
         return next
-      }),
-    'tasks.delete': (a) =>
-      prefer('tasks.delete', a, async () => {
+      })
+    },
+    'tasks.delete': (a) => {
+      if (agentTasks.has(a.id)) {
+        agentTasks.remove(a.id)
+        emit('task.removed', { id: a.id })
+        return
+      }
+      return prefer('tasks.delete', a, async () => {
         const t = await call('tasks.get', a).catch(() => null)
         if (t && ACTIVE.includes(t.status)) await call('tasks.cancel', a).catch(() => undefined)
         prefs.set((s) => ({ hiddenTasks: [...new Set([...s.hiddenTasks, a.id])] }))
         emit('task.removed', { id: a.id })
-      }),
-    'tasks.clearHistory': () =>
-      prefer('tasks.clearHistory', undefined, async () => {
+      })
+    },
+    'tasks.clearHistory': async () => {
+      const mine = agentTasks.clearFinished()
+      for (const id of mine) emit('task.removed', { id })
+      const r = await prefer('tasks.clearHistory', undefined, async () => {
         const hidden = hiddenTasks()
         const done = (await call('tasks.list', { limit: 1000 })).filter((t) => !ACTIVE.includes(t.status) && !hidden.has(t.id))
         prefs.set((s) => ({ hiddenTasks: [...new Set([...s.hiddenTasks, ...done.map((t) => t.id)])] }))
         for (const t of done) emit('task.removed', { id: t.id })
         return { removed: done.length }
-      }),
+      }).catch(() => ({ removed: 0 }))
+      return { removed: r.removed + mine.length }
+    },
 
     'permissions.respond': async (a) => {
       if (!a || typeof a.id !== 'string' || typeof a.decision !== 'string') throw new ZvyraError('INVALID_ARGS', 'id and decision are required')

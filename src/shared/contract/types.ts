@@ -811,6 +811,11 @@ export interface AppSettings {
     ttsRate: number // 0.5..2
     speakResponses: boolean
   }
+  /**
+   * (1.5.0) stayAwake: a voice conversation stays open until you end it (no idle sleep).
+   * autonomous: commands run without approval popups (blocked commands stay blocked).
+   */
+  assistant: { stayAwake: boolean; autonomous: boolean }
   startup: { openAtLogin: boolean; startHidden: boolean }
   tray: { closeToTray: boolean }
   background: { allowBackgroundTasks: boolean; maxConcurrentTasks: number; resumeQueuedOnStart: boolean }

@@ -95,6 +95,27 @@ describe.runIf(win)('terminal pipeline', () => {
     expect((await other).status).toBe('denied')
   }, 40_000)
 
+  it('autonomous mode runs risky commands without asking but still blocks critical ones', async () => {
+    const auto = new TerminalService(
+      new JsonDoc<TerminalState>(join(dir, 'terminal-auto.json'), { runs: [] }),
+      async (p) => p,
+      () => undefined,
+      () => undefined,
+      approvals,
+      async (cwd) => ({ cwd, home: homedir(), allowedRoots: [dir], env: process.env }),
+      () => undefined,
+      () => true
+    )
+    const n = requests.length
+    const marker = join(work, 'auto.txt')
+    const r = await auto.execute(`Set-Content -LiteralPath '${marker}' -Value ok`, work, { source: 'agent' })
+    expect(r.status).toBe('completed')
+    expect(r.approvedBy).toBe('autonomous')
+    expect(existsSync(marker)).toBe(true)
+    expect((await auto.execute('Format-Volume -DriveLetter Z', work, { source: 'agent' })).status).toBe('blocked')
+    expect(requests.length).toBe(n)
+  }, 30_000)
+
   it('blocks critical commands without asking', async () => {
     const n = requests.length
     const r = await term.execute('Format-Volume -DriveLetter Z', work, { source: 'agent' })

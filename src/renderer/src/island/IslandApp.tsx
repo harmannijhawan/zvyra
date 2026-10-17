@@ -182,8 +182,10 @@ function Surface({
 
   const voiceState = useStore((s) => s.voice?.state)
   const voiceActive = voiceState === 'wake_detected' || voiceState === 'listening' || voiceState === 'transcribing' || voiceState === 'speaking'
-  const size = ISLAND_SIZES[visual]
-  const height = surfaceHeight(visual, measured)
+  // While talking, live tool cards (a build in progress) widen the voice pill instead of being hidden.
+  const voiceWithTools = group === 'voice' && tools.length > 0
+  const size = voiceWithTools ? { ...ISLAND_SIZES[visual], w: 424, max: 420 } : ISLAND_SIZES[visual]
+  const height = voiceWithTools ? Math.round(Math.min(size.max, Math.max(size.h, measured || size.h))) : surfaceHeight(visual, measured)
   const rawLevel = useStore((s) => s.voiceLevel)
   // Edge glow follows the real audio level (mic while listening, ZVYRA's voice while speaking).
   const lvl = visual === 'listening' || visual === 'speech' || visual === 'speaking' ? Math.min(1, rawLevel) : 0
@@ -223,7 +225,7 @@ function Surface({
         <div ref={bodyRef} className="di-measure">
           {visual === 'mini' && <MiniContent />}
           {visual === 'idle' && <IdleContent onExpand={onExpand} />}
-          {inVoice && <VoiceContent visual={visual} />}
+          {inVoice && <VoiceContent visual={visual} tools={tools} />}
           {visual === 'working' && <WorkingContent />}
           {visual === 'notice' && <NoticeContent />}
           {visual === 'approval' && <ApprovalContent />}
@@ -295,7 +297,7 @@ function IdleContent({ onExpand }: { onExpand: () => void }) {
 
 const VOICE_LABEL: Record<string, string> = { listening: 'Listening', speech: 'Listening', processing: 'Thinking', speaking: 'Speaking' }
 
-function VoiceContent({ visual }: { visual: IslandVisual }) {
+function VoiceContent({ visual, tools }: { visual: IslandVisual; tools: ToolActivity[] }) {
   const voice = useStore((s) => s.voice)
   const level = useStore((s) => s.voiceLevel)
   const transcript = useStore((s) => s.liveTranscript)
@@ -319,6 +321,12 @@ function VoiceContent({ visual }: { visual: IslandVisual }) {
         </button>
       </div>
       {line && <div className="di-transcript selectable">{line.length > 120 ? '…' + line.slice(-120) : line}</div>}
+      {/* Live work (builds, research…) stays visible while you keep talking. */}
+      {!!tools.length && (
+        <div className="di-voice-tools no-drag">
+          <ToolStack items={tools.slice(0, 2)} />
+        </div>
+      )}
     </div>
   )
 }

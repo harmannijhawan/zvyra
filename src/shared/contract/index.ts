@@ -9,7 +9,7 @@ export * from './events'
 import type { MethodArgs, MethodName, MethodResult } from './methods'
 import type { ZvyraEvent } from './events'
 
-export const CONTRACT_VERSION = '1.4.0'
+export const CONTRACT_VERSION = '1.5.0'
 
 export type ErrorCode =
   | 'NOT_IMPLEMENTED' // backend has not built this yet

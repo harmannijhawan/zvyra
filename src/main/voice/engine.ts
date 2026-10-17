@@ -45,6 +45,8 @@ export interface VoiceConfig {
   /** End-of-speech pause the model waits for (ms). */
   silenceMs: number
   speakingRate: number
+  /** Keep the conversation open until the user ends it (no idle timeout). */
+  stayAwake?: boolean
 }
 
 export interface VoiceTools {
@@ -576,6 +578,8 @@ export class VoiceEngine {
       this.cmd({ type: 'start', deviceId: cfg.micDeviceId }) // device changed
     }
     if (this.phase === 'standby') this.prefetchContext()
+    // Stay-awake switched off mid-conversation: start the normal idle countdown.
+    if (this.phase === 'listening' || this.phase === 'speaking') this.touch()
     this.publish()
   }
 
@@ -927,6 +931,9 @@ export class VoiceEngine {
   private touch() {
     this.lastActivity = Date.now()
     if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.idleTimer = null
+    // Stay awake: the conversation (and the island) stays active until "go to sleep" or the stop button.
+    if (this.d.getConfig().stayAwake) return
     const ms = Math.max(5, this.d.getConfig().idleTimeoutSec) * 1000
     this.idleTimer = setTimeout(() => {
       if (this.phase === 'listening' && !this.modelTurnActive && Date.now() - this.lastActivity >= ms - 50) this.sleep('idle')

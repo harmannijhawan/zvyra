@@ -693,7 +693,7 @@ body {
   padding: 9px;
 }
 .di-voice-tools {
-  padding: 8px 10px 0;
+  padding: 8px 10px 10px;
 }
 .tc-stack {
   display: flex;

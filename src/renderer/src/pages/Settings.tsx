@@ -83,6 +83,7 @@ function Section({ id }: { id: string }) {
     case 'permissions':
       return (
         <div className="stack">
+          <AutonomousMode />
           <Permissions />
           <CommandRules />
         </div>
@@ -166,6 +167,12 @@ function IslandSettings() {
       </Row>
       <SettingToggle label="Show waveform" value={s.island.showWaveform} onChange={(v) => void patchSettings({ island: { showWaveform: v } })} />
       <SettingToggle label="Expand when I say the wake word" value={s.island.expandOnWake} onChange={(v) => void patchSettings({ island: { expandOnWake: v } })} />
+      <SettingToggle
+        label="Stay awake"
+        help="After the wake word, ZVYRA keeps the conversation and the island active until you say “go to sleep” or press stop. Turn off to fall asleep after a short silence. Audio is sent to Gemini while a conversation is active."
+        value={s.assistant?.stayAwake ?? true}
+        onChange={(v) => void patchSettings({ assistant: { stayAwake: v } })}
+      />
       <Row label="Position" help="Move the island back to the top centre of your main display.">
         <Button size="sm" onClick={() => void attempt(() => shellCall('island.resetPosition'), { success: 'Island moved' })}>
           Reset position
@@ -244,6 +251,33 @@ function Permissions() {
         danger
         onClose={() => setPendingAllow(null)}
         onConfirm={() => pendingAllow && void set(pendingAllow, 'allow')}
+      />
+    </Card>
+  )
+}
+
+/** Autonomous mode: ZVYRA runs commands and continues tasks without approval popups. */
+function AutonomousMode() {
+  const s = useSettings()
+  const [confirm, setConfirm] = useState(false)
+  if (!s) return null
+  const on = !!s.assistant?.autonomous
+  return (
+    <Card title="Autonomous mode" icon={ShieldCheck}>
+      <SettingToggle
+        label="Don’t ask for permission"
+        help="ZVYRA runs installs, scripts, file changes and other commands, and lets tasks continue, without approval popups. Every action is still risk-checked and logged in Activity. Dangerous system commands (formatting disks, turning off security, admin elevation) stay blocked."
+        value={on}
+        onChange={(v) => (v ? setConfirm(true) : void patchSettings({ assistant: { autonomous: false } }))}
+      />
+      <ConfirmDialog
+        open={confirm}
+        title="Turn on autonomous mode?"
+        body="ZVYRA will run commands, including deleting files and changing settings, without asking you first. You can stop everything at any time with the stop shortcut or turn this off here."
+        confirmLabel="Turn on"
+        danger
+        onClose={() => setConfirm(false)}
+        onConfirm={() => void patchSettings({ assistant: { autonomous: true } })}
       />
     </Card>
   )
