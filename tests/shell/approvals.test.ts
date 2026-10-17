@@ -101,6 +101,32 @@ describe('Always allow', () => {
   })
 })
 
+describe('Bypass mode switched on while requests wait', () => {
+  it('approves every waiting request once and saves no rules', async () => {
+    const a = svc.request(op('npm install'))
+    const b = svc.request(op('Remove-Item .\\dist -Recurse'))
+    expect(svc.approveAll()).toBe(2)
+    expect(await a.outcome).toBe('allow_once')
+    expect(await b.outcome).toBe('allow_once')
+    expect(svc.list()).toHaveLength(0)
+    expect(svc.rules()).toHaveLength(0)
+    expect(resolved.map(([, d]) => d)).toEqual(['allow_once', 'allow_once'])
+  })
+  it('is a no-op with nothing waiting, and never lets critical commands in', () => {
+    expect(svc.approveAll()).toBe(0)
+    expect(() => svc.request(op('Format-Volume -DriveLetter C'))).toThrow(/blocked/)
+    expect(svc.approveAll()).toBe(0)
+  })
+  it('approved operations are still re-verified before they run', () => {
+    const { id } = svc.request(op('npm run build'))
+    const approved = op('npm run build')
+    svc.approveAll()
+    expect(svc.owns(id)).toBe(false)
+    const swapped = 'npm run build; Remove-Item .\\src -Recurse'
+    expect(verifyBeforeRun(approved, 'powershell', swapped, cwd, classifyCommand(swapped, 'powershell', ctx))).toMatch(/changed after it was approved/)
+  })
+})
+
 describe('approval binding', () => {
   it('rejects a command swapped after approval', () => {
     const approved = op('npm run build')

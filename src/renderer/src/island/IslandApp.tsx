@@ -10,14 +10,14 @@
  * The window has a fixed transparent footprint and is click-through outside the
  * surface, so state changes never resize or move the window.
  */
-import { Check, ChevronDown, ExternalLink, FileText, Info, Maximize2, Mic, MicOff, Minus, Rocket, Send, ShieldCheck, ShieldX, Square, TriangleAlert, X } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, FileText, Info, Maximize2, Mic, MicOff, Minus, Rocket, Send, ShieldCheck, ShieldOff, ShieldX, Square, TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as RMouseEvent } from 'react'
 import type { IslandMode } from '@shared/shell'
 import type { ToolActivity } from '@shared/contract'
 import { call, shellCall } from '../lib/client'
 import { setWakeWord, submitInstruction, toggleListening, useActiveTasks, useCompanion } from '../lib/hooks'
 import { deriveIslandVisual, ISLAND_SIZES, surfaceHeight, visualGroup, type IslandVisual } from '../lib/islandVisual'
-import { setState, useStore } from '../lib/store'
+import { getState, setState, subscribeStore, useStore } from '../lib/store'
 import { attempt, goTo } from '../lib/useAction'
 import { ZMark } from '../components/brand'
 import { Pet } from '../components/Pet'
@@ -25,6 +25,7 @@ import { PermissionCard } from '../components/PermissionCard'
 import { PlanSteps, TaskProgress, TaskStatusBadge } from '../components/TaskBits'
 import { HelixWave } from '../components/HelixWave'
 import { Toasts } from '../components/ui'
+import { patchSettings } from '../pages/settings/common'
 import { CameraContent, ToolStack, useFreshTools } from './IslandCards'
 
 const setMode = (mode: IslandMode) => void attempt(() => shellCall('island.setMode', { mode }))
@@ -186,9 +187,21 @@ function Surface({
   const voiceWithTools = group === 'voice' && tools.length > 0
   const size = voiceWithTools ? { ...ISLAND_SIZES[visual], w: 424, max: 420 } : ISLAND_SIZES[visual]
   const height = voiceWithTools ? Math.round(Math.min(size.max, Math.max(size.h, measured || size.h))) : surfaceHeight(visual, measured)
-  const rawLevel = useStore((s) => s.voiceLevel)
   // Edge glow follows the real audio level (mic while listening, ZVYRA's voice while speaking).
-  const lvl = visual === 'listening' || visual === 'speech' || visual === 'speaking' ? Math.min(1, rawLevel) : 0
+  // The level arrives ~15×/s: write it straight to the CSS variable instead of re-rendering the surface.
+  const surfaceRef = useRef<HTMLDivElement>(null)
+  const levelOn = visual === 'listening' || visual === 'speech' || visual === 'speaking'
+  useLayoutEffect(() => {
+    const el = surfaceRef.current
+    if (!el) return
+    let last = ''
+    const apply = () => {
+      const v = levelOn ? Math.min(1, getState().voiceLevel).toFixed(2) : '0'
+      if (v !== last) el.style.setProperty('--lvl', (last = v))
+    }
+    apply()
+    return subscribeStore(apply)
+  }, [levelOn])
   const noticeBad = useStore((s) => s.notices[0]?.kind === 'error' || s.notices[0]?.kind === 'denied')
   const glow =
     visual === 'camera'
@@ -213,8 +226,9 @@ function Surface({
 
   return (
     <div
+      ref={surfaceRef}
       className={`di v-${visual} g-${group} glow-${glow}`}
-      style={{ width: size.w, height, borderRadius: size.r, ['--lvl' as string]: lvl.toFixed(2) }}
+      style={{ width: size.w, height, borderRadius: size.r }}
       onMouseDown={onMouseDown}
       role="region"
       aria-label="ZVYRA Dynamic Island"
@@ -255,12 +269,53 @@ function ProcessingDots({ label = 'Working' }: { label?: string }) {
   )
 }
 
+const useBypass = () => useStore((s) => !!s.settings?.assistant?.autonomous)
+
+/**
+ * Bypass mode switch (the same setting as Settings → Permissions → Autonomous
+ * mode). Only this user control can change it: the AI has no tool that does.
+ * Blocked (critical) commands stay blocked either way.
+ */
+function BypassSwitch({ variant }: { variant: 'icon' | 'chip' }) {
+  const on = useBypass()
+  const ready = useStore((s) => !!s.settings)
+  const [busy, setBusy] = useState(false)
+  const toggle = async () => {
+    if (busy || !ready) return
+    setBusy(true)
+    await patchSettings({ assistant: { autonomous: !on } })
+    setBusy(false)
+  }
+  const title = on ? 'Bypass on: ZVYRA runs commands without asking. Blocked commands stay blocked. Click to turn off.' : 'Bypass permissions: run commands without asking'
+  const track = (
+    <span className="di-bypass-track" aria-hidden="true">
+      <i>{on ? <ShieldOff /> : <ShieldCheck />}</i>
+    </span>
+  )
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="Bypass permissions"
+      title={title}
+      disabled={!ready}
+      className={variant === 'chip' ? `di-chip bypass ${on ? 'on' : ''}` : `di-bypass ${on ? 'on' : ''}`}
+      onClick={() => void toggle()}
+    >
+      {variant === 'chip' && <span>Bypass {on ? 'on' : 'off'}</span>}
+      {track}
+    </button>
+  )
+}
+
 function MiniContent() {
   const voice = useStore((s) => s.voice)
+  const bypass = useBypass()
   return (
     <div className="di-row mini">
       <ZMark size={16} />
-      <span className={`di-state-dot ${voice?.state === 'standby' ? 'on' : ''}`} aria-hidden="true" />
+      <span className={`di-state-dot ${voice?.state === 'standby' ? 'on' : ''} ${bypass ? 'bypass' : ''}`} title={bypass ? 'Bypass mode is on' : undefined} aria-hidden="true" />
     </div>
   )
 }
@@ -268,16 +323,20 @@ function MiniContent() {
 function IdleContent({ onExpand }: { onExpand: () => void }) {
   const voice = useStore((s) => s.voice)
   const booting = useStore((s) => s.boot !== 'ready')
+  const bypass = useBypass()
   const standby = voice?.state === 'standby'
   const label = booting ? 'Starting…' : standby ? `Say “${voice?.wakePhrase ?? 'Hey Zvyra'}”` : voice?.state === 'error' ? 'Voice needs attention' : 'ZVYRA'
+  const dotTitle = bypass ? 'Bypass mode is on: commands run without asking' : standby ? 'Listening for the wake word on this PC' : 'Wake word off'
   return (
     <div className="di-row idle">
       <ZMark size={19} />
       <span className="di-idle-label truncate" aria-live="polite">
         {label}
       </span>
-      <span className={`di-state-dot ${standby ? 'on' : ''} ${voice?.state === 'error' ? 'err' : ''}`} title={standby ? 'Listening for the wake word on this PC' : 'Wake word off'} aria-hidden="true" />
+      <span className={`di-state-dot ${standby ? 'on' : ''} ${voice?.state === 'error' ? 'err' : ''} ${bypass ? 'bypass' : ''}`} title={dotTitle} aria-hidden="true" />
+      {bypass && <span className="sr-only">Bypass mode is on</span>}
       <div className="di-hover-actions no-drag">
+        <BypassSwitch variant="icon" />
         <button type="button" className="di-icon xs" onClick={() => void toggleListening('island')} aria-label="Talk to ZVYRA" title="Talk">
           <Mic />
         </button>
@@ -482,6 +541,7 @@ function ExpandedContent({ onCollapse }: { onCollapse: () => void }) {
         <button type="button" className={`di-chip ${wakeOn ? 'on' : ''}`} onClick={() => void setWakeWord(!wakeOn)} aria-pressed={wakeOn}>
           {wakeOn ? <Mic /> : <MicOff />} “{voice?.wakePhrase ?? 'Hey Zvyra'}” {wakeOn ? 'on' : 'off'}
         </button>
+        <BypassSwitch variant="chip" />
         <button type="button" className="di-chip" onClick={() => goTo('home')}>
           <ExternalLink /> Open ZVYRA
         </button>

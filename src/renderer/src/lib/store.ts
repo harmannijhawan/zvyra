@@ -22,8 +22,13 @@ export function setState(update: Partial<AppState> | ((s: AppState) => Partial<A
 
 function subscribe(l: () => void) {
   listeners.add(l)
-  return () => listeners.delete(l)
+  return () => {
+    listeners.delete(l)
+  }
 }
+
+/** Direct subscription for hot paths (e.g. the live audio level) that update the DOM without re-rendering. */
+export const subscribeStore = subscribe
 
 export function useStore<T>(selector: (s: AppState) => T): T {
   return useSyncExternalStore(subscribe, () => selector(state))

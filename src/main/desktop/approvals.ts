@@ -194,6 +194,18 @@ export class ApprovalService {
     for (const id of [...this.pending.keys()]) this.finish(id, 'deny')
   }
 
+  /**
+   * The user switched on Bypass (autonomous) mode: everything already waiting
+   * runs once. Called only from the trusted settings IPC path. The executor
+   * still re-verifies each approved operation before it spawns, and critical
+   * commands never reach this queue.
+   */
+  approveAll(): number {
+    const ids = [...this.pending.keys()]
+    for (const id of ids) this.finish(id, 'allow_once')
+    return ids.length
+  }
+
   private finish(id: string, outcome: ApprovalOutcome) {
     const p = this.pending.get(id)
     if (!p) return

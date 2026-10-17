@@ -43,11 +43,11 @@ jobs:
       - name: Publish macOS release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.0-macos' }}
-          name: ZVYRA ${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.0-macos' }} for macOS
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.1-macos' }}
+          name: ZVYRA ${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.1-macos' }} for macOS
           prerelease: true
           body: |
-            ZVYRA preview for macOS (${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.0-macos' }}). Download the arm64 DMG for Apple Silicon or the x64 DMG for Intel.
+            ZVYRA preview for macOS (${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.1-macos' }}). Download the arm64 DMG for Apple Silicon or the x64 DMG for Intel.
             These builds are unsigned and not notarized. This is a macOS desktop release, not an iPhone/iPad installer.
           files: |
             release/*.dmg

@@ -36,6 +36,7 @@ import {
   type MethodName,
   type MethodResult,
   type NotificationPolicy,
+  type PermissionRequest,
   type SwarmConnection,
   type SetupState,
   type Task,
@@ -600,13 +601,15 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     userApps: () => apps.list(),
     launchUserApp: (id) => apps.launch(id),
     status: async () => {
-        const tasks = await call('tasks.list', { limit: 50 }).catch(() => [] as Task[])
+        const [tasks, approvals, conn] = await Promise.all([
+          call('tasks.list', { limit: 50 }).catch(() => [] as Task[]),
+          call('permissions.pending', undefined).catch(() => [] as PermissionRequest[]),
+          call('swarm.connection', undefined).catch(() => null)
+        ])
         const hidden = hiddenTasks()
         const visible = tasks.filter((t) => !hidden.has(t.id))
         const active = visible.filter((t) => ACTIVE.includes(t.status))
         const recent = visible.filter((t) => t.status === 'completed' || t.status === 'failed').slice(0, 3)
-        const approvals = await call('permissions.pending', undefined).catch(() => [])
-        const conn = await call('swarm.connection', undefined).catch(() => null)
         const builderLines = [...buildCards.values()]
         .filter((b) => b.status === 'running' || Date.now() - Date.parse(b.updatedAt) < 30 * 60_000)
         .map((b) => {
@@ -628,9 +631,12 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   }
 
   const systemContext = async () => {
-        const s = await call('settings.get', undefined).catch(() => null)
-        const project = await call('projects.active', undefined).catch(() => null)
-        const mems = await call('memory.list', {}).catch(() => [] as MemoryItem[])
+        // Three independent lookups: run them together (they used to run one after another before every request).
+        const [s, project, mems] = await Promise.all([
+          call('settings.get', undefined).catch(() => null),
+          call('projects.active', undefined).catch(() => null),
+          call('memory.list', {}).catch(() => [] as MemoryItem[])
+        ])
         const keep = mems.filter((m) => m.pinned || m.kind === 'preference').slice(0, 8)
         return [
           `Current date and time: ${new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`,
@@ -693,6 +699,11 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       .run(
         text,
         (u) => {
+          // Live reply text: the answer appears word by word instead of all at once at the end.
+          if (u.partial && !u.action) {
+            push({ status: 'streaming', response: u.partial })
+            return
+          }
           if (u.thinking && !u.action) {
             updateCard({ summary: u.thinking })
             if (taskId) agentTasks.progress(taskId, u.thinking)
@@ -908,7 +919,8 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     retention.unref?.()
     void connectAI()
   }
-  setTimeout(() => void startup(), 800)
+  // Let the windows start loading first, then warm everything (was a fixed 800 ms wait).
+  setTimeout(() => void startup(), 150)
 
   async function setupState(): Promise<SetupState> {
     const conn = await call('swarm.connection', undefined).catch(() => null)
@@ -974,9 +986,25 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         const next = { ...PREFS_DEFAULT.assistant, ...prefs.get().assistant }
         if (typeof patchAssistant.stayAwake === 'boolean') next.stayAwake = patchAssistant.stayAwake
         if (typeof patchAssistant.autonomous === 'boolean') next.autonomous = patchAssistant.autonomous
-        const was = prefs.get().assistant?.autonomous
+        const was = !!prefs.get().assistant?.autonomous
         prefs.set({ assistant: next })
-        if (was !== next.autonomous) activity('permission.mode', next.autonomous ? 'Autonomous mode on' : 'Autonomous mode off', next.autonomous ? 'Commands run without asking; blocked commands stay blocked' : 'Risky commands ask first again', next.autonomous ? 'warning' : 'info')
+        if (was !== next.autonomous) {
+          activity('permission.mode', next.autonomous ? 'Bypass mode on' : 'Bypass mode off', next.autonomous ? 'Commands run without asking; blocked commands stay blocked' : 'Risky commands ask first again', next.autonomous ? 'warning' : 'info')
+          notify({
+            key: 'bypass-mode',
+            kind: next.autonomous ? 'approved' : 'info',
+            title: next.autonomous ? 'Bypass mode on' : 'Bypass mode off',
+            body: next.autonomous ? 'ZVYRA won’t ask before running commands. Blocked commands stay blocked.' : 'Risky commands ask for your OK again.',
+            timeoutMs: 4500
+          })
+          // Anything already waiting for an answer runs now (each one is still re-verified before it spawns).
+          if (next.autonomous) {
+            const n = approvals.approveAll()
+            const engine = await call('permissions.pending', undefined).catch(() => [] as PermissionRequest[])
+            await Promise.all(engine.map((p) => call('permissions.respond', { id: p.id, decision: 'allow_once' }).catch(() => undefined)))
+            if (n + engine.length) activity('permission.auto', `Approved ${n + engine.length} waiting request(s)`, 'Bypass mode was turned on', 'warning')
+          }
+        }
         voice.refresh()
       }
       const merged = mergeSettings(base)

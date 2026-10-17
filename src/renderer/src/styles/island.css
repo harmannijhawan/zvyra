@@ -302,6 +302,106 @@ body {
   opacity: 1;
   pointer-events: auto;
 }
+/* Bypass mode is on: the resting dot turns amber so it's always visible. */
+.di-state-dot.bypass,
+.di-state-dot.on.bypass {
+  background: #ffb84d;
+  box-shadow: 0 0 0 2px rgba(255, 184, 77, 0.22);
+}
+
+/* ---------------------------------------------------------------- bypass switch */
+
+.di-bypass {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border-radius: 14px;
+  background: transparent;
+}
+.di-bypass:focus-visible {
+  outline: 2px solid #8fc2ff;
+  outline-offset: 1px;
+}
+.di-bypass-track {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.34);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+.di-bypass-track i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  color: #24324f;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transform: translateX(0);
+  transition: transform 0.22s var(--di-morph), color 0.18s ease;
+  will-change: transform;
+}
+.di-bypass-track svg {
+  width: 9px;
+  height: 9px;
+  stroke-width: 2.6;
+}
+.di-bypass:hover .di-bypass-track,
+.di-chip.bypass:hover .di-bypass-track {
+  background: rgba(0, 0, 0, 0.46);
+}
+.di-bypass.on .di-bypass-track,
+.di-chip.bypass.on .di-bypass-track {
+  background: #f0a43a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 0 1px rgba(255, 184, 77, 0.35);
+}
+.di-bypass.on .di-bypass-track i,
+.di-chip.bypass.on .di-bypass-track i {
+  color: #8a4b00;
+  transform: translateX(14px);
+}
+.di-chip.bypass {
+  gap: 8px;
+  padding-right: 5px;
+}
+.di-chip.bypass .di-bypass-track {
+  width: 28px;
+  height: 16px;
+}
+.di-chip.bypass .di-bypass-track i {
+  width: 12px;
+  height: 12px;
+}
+.di-chip.bypass.on .di-bypass-track i {
+  transform: translateX(12px);
+}
+.di-chip.bypass .di-bypass-track svg {
+  width: 8px;
+  height: 8px;
+}
+.di-chip.bypass.on {
+  color: #ffd79a;
+  background: rgba(255, 184, 77, 0.14);
+}
+.di-bypass:disabled,
+.di-chip.bypass:disabled {
+  opacity: 0.5;
+}
 .v-idle:hover .di-idle-label,
 .v-idle:hover .di-state-dot,
 .v-idle:focus-within .di-idle-label,
@@ -711,38 +811,28 @@ body {
   border-radius: 20px;
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
-  animation: tc-in 0.75s var(--di-spring) both;
-  animation-delay: calc(var(--i, 0) * 90ms);
+  animation: tc-in 0.32s var(--di-spring) both;
+  animation-delay: calc(var(--i, 0) * 50ms);
 }
-/* drifting aurora tinted by the tool kind */
+/* static tint by tool kind (the drifting aurora loop was decorative and repainted constantly) */
 .tc::before {
   content: '';
   position: absolute;
-  inset: -45%;
+  inset: 0;
   z-index: -1;
   background:
-    radial-gradient(38% 55% at 22% 30%, color-mix(in srgb, var(--k1) 30%, transparent), transparent 70%),
-    radial-gradient(38% 55% at 78% 72%, color-mix(in srgb, var(--k2) 26%, transparent), transparent 70%);
-  animation: tc-aurora 6s ease-in-out infinite alternate;
-  transition: opacity 0.8s ease;
+    radial-gradient(60% 90% at 12% 20%, color-mix(in srgb, var(--k1) 22%, transparent), transparent 70%),
+    radial-gradient(60% 90% at 88% 80%, color-mix(in srgb, var(--k2) 18%, transparent), transparent 70%);
+  transition: opacity 0.3s ease;
 }
 .tc.s-done::before,
 .tc.s-error::before {
   opacity: 0.5;
 }
-@keyframes tc-aurora {
-  to {
-    transform: translate(9%, -7%) rotate(28deg) scale(1.12);
-  }
-}
 @keyframes tc-in {
   from {
     opacity: 0;
-    transform: translateY(-12px) scale(0.92);
-    filter: blur(8px);
-  }
-  60% {
-    filter: blur(0);
+    transform: translateY(-6px) scale(0.98);
   }
 }
 .tc.k-research { --k1: #3cc8ff; --k2: #8a6bff; }
@@ -781,16 +871,9 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* running subject: brighter text instead of the old looping shimmer */
 .tc-subject.shimmer {
-  color: transparent;
-  background: linear-gradient(90deg, rgba(225, 232, 255, 0.5) 0%, #fff 45%, rgba(225, 232, 255, 0.5) 62%) 0 0 / 230% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: tc-shimmer 1.8s linear infinite;
-}
-@keyframes tc-shimmer {
-  from { background-position: 130% 0; }
-  to { background-position: -100% 0; }
+  color: rgba(240, 245, 255, 0.86);
 }
 .tc-dots {
   display: inline-flex;
@@ -837,11 +920,10 @@ body {
   width: 17px;
   height: 17px;
   color: #fff;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
-  animation: tc-icon-pop 0.55s var(--di-pop) both;
+  animation: tc-icon-pop 0.24s var(--di-spring) both;
 }
 @keyframes tc-icon-pop {
-  from { transform: scale(0.3) rotate(-40deg); opacity: 0; }
+  from { transform: scale(0.7); opacity: 0; }
 }
 .tc-orb-ring {
   position: absolute;
@@ -852,20 +934,9 @@ body {
   mask: radial-gradient(circle, transparent 62%, #000 65%);
   animation: di-spin 1.05s linear infinite;
 }
+/* sonar pings removed (decorative loop); the progress ring alone shows work is running */
 .tc-orb-ping {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 1.5px solid var(--k1);
-  opacity: 0;
-  animation: tc-ping 1.8s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
-}
-.tc-orb-ping.two {
-  animation-delay: 0.9s;
-}
-@keyframes tc-ping {
-  0% { opacity: 0.8; transform: scale(0.9); }
-  100% { opacity: 0; transform: scale(2.1); }
+  display: none;
 }
 .s-done .tc-orb-ring,
 .s-error .tc-orb-ring {
@@ -879,53 +950,12 @@ body {
   animation: none;
 }
 .s-done .tc-orb {
-  animation: tc-orb-pop 0.65s var(--di-pop);
+  animation: tc-orb-pop 0.3s var(--di-spring);
 }
 @keyframes tc-orb-pop {
-  0% { transform: scale(0.82); }
-  55% { transform: scale(1.14); }
+  from { transform: scale(0.92); }
 }
-/* research: radar sweep */
-.k-research.s-running .tc-orb::after {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  z-index: 1;
-  border-radius: 50%;
-  background: conic-gradient(from var(--di-angle), rgba(255, 255, 255, 0.6), transparent 24%);
-  mix-blend-mode: screen;
-  animation: di-spin 1.4s linear infinite;
-}
-/* media: spinning vinyl sheen */
-.k-media .tc-orb::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  z-index: 1;
-  border-radius: 50%;
-  background:
-    conic-gradient(from var(--di-angle), transparent, rgba(255, 255, 255, 0.4) 9%, transparent 18%, transparent 50%, rgba(255, 255, 255, 0.3) 59%, transparent 68%),
-    repeating-radial-gradient(circle, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
-  animation: di-spin 1.8s linear infinite;
-}
-/* build: a satellite orbiting the orb */
-.k-build.s-running .tc-orb::after {
-  content: '';
-  position: absolute;
-  top: -3px;
-  left: calc(50% - 3px);
-  width: 6px;
-  height: 6px;
-  z-index: 3;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 8px var(--k1), 0 0 14px var(--k1);
-  transform-origin: 3px 22px;
-  animation: tc-orbit 1.2s linear infinite;
-}
-@keyframes tc-orbit {
-  to { transform: rotate(360deg); }
-}
+/* Removed: research radar sweep, media vinyl spin and build satellite orbit (decorative infinite loops). */
 
 /* indeterminate light beam while running */
 .tc-beam {
@@ -940,9 +970,9 @@ body {
   position: absolute;
   inset: 0;
   width: 42%;
-  background: linear-gradient(90deg, transparent, var(--k1), #fff, var(--k2), transparent);
-  filter: drop-shadow(0 0 4px var(--k1));
-  animation: tc-beam 1.3s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+  background: linear-gradient(90deg, transparent, var(--k1), var(--k2), transparent);
+  animation: tc-beam 1.4s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+  will-change: transform;
 }
 @keyframes tc-beam {
   from { transform: translateX(-110%); }
@@ -971,11 +1001,11 @@ body {
 .reveal {
   -webkit-mask-image: linear-gradient(180deg, #000 calc(var(--rv) - 30%), transparent var(--rv));
   mask-image: linear-gradient(180deg, #000 calc(var(--rv) - 30%), transparent var(--rv));
-  animation: tc-reveal 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: tc-reveal 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 @keyframes tc-reveal {
-  from { --rv: 0%; filter: blur(3px); opacity: 0.2; }
-  to { --rv: 135%; filter: blur(0); opacity: 1; }
+  from { --rv: 0%; opacity: 0.4; }
+  to { --rv: 135%; opacity: 1; }
 }
 
 .tc-steps {
@@ -992,7 +1022,7 @@ body {
   gap: 8px;
   font-size: 12px;
   color: rgba(225, 232, 255, 0.62);
-  animation: tc-step 0.45s var(--di-spring) both;
+  animation: tc-step 0.24s var(--di-spring) both;
 }
 .tc-steps li.now {
   color: #fff;
@@ -1032,9 +1062,9 @@ body {
   color: rgba(235, 240, 255, 0.86);
   text-decoration: none;
   background: rgba(255, 255, 255, 0.07);
-  animation: tc-fly 0.6s var(--di-spring) both;
-  animation-delay: calc(0.18s + var(--i) * 75ms);
-  transition: background 0.2s, transform 0.25s var(--di-pop);
+  animation: tc-fly 0.28s var(--di-spring) both;
+  animation-delay: calc(0.08s + var(--i) * 40ms);
+  transition: background 0.2s, transform 0.2s var(--di-spring);
 }
 .tc-src:hover {
   background: rgba(255, 255, 255, 0.15);
@@ -1060,8 +1090,7 @@ body {
 @keyframes tc-fly {
   from {
     opacity: 0;
-    transform: translateY(14px) scale(0.85) rotateX(55deg);
-    filter: blur(6px);
+    transform: translateY(6px);
   }
 }
 
@@ -1077,17 +1106,13 @@ body {
   height: 30%;
   border-radius: 2px;
   background: linear-gradient(0deg, var(--k1), var(--k2));
-  box-shadow: 0 0 6px color-mix(in srgb, var(--k1) 50%, transparent);
-  animation: tc-eq 0.9s ease-in-out infinite alternate;
-  animation-delay: calc(var(--i) * -0.13s);
+  /* static equaliser: the looping height animation forced layout on every frame */
+  height: 40%;
+  opacity: 0.85;
 }
-.tc-eq i:nth-child(3n) { animation-duration: 0.65s; }
-.tc-eq i:nth-child(4n + 1) { animation-duration: 1.15s; }
-@keyframes tc-eq {
-  0% { height: 16%; }
-  50% { height: 96%; }
-  100% { height: 38%; }
-}
+.tc-eq i:nth-child(3n) { height: 72%; }
+.tc-eq i:nth-child(4n + 1) { height: 56%; }
+.tc-eq i:nth-child(5n + 2) { height: 88%; }
 
 /* ================================================================ camera */
 
@@ -1454,22 +1479,26 @@ body {
 }
 .di {
   transition:
-    width 0.55s var(--di-spring),
-    height 0.55s var(--di-spring),
-    border-radius 0.55s var(--di-spring),
-    transform 0.35s var(--di-pop);
+    width 0.38s var(--di-spring),
+    height 0.38s var(--di-spring),
+    border-radius 0.38s var(--di-spring),
+    transform 0.2s var(--di-spring);
 }
 .di:active:not(.v-expanded):not(.v-approval) {
   transform: scale(0.985);
 }
+/*
+ * One content fade per state group. Opacity + transform only (compositor):
+ * the old blur(6px) filter repainted the whole glass surface on every frame
+ * of every state change, which is what made transitions stutter.
+ */
 .di-body {
-  animation: di-fade 0.42s var(--di-spring);
+  animation: di-fade 0.26s var(--di-spring) both;
 }
 @keyframes di-fade {
   from {
     opacity: 0;
-    filter: blur(6px);
-    transform: scale(0.97);
+    transform: translateY(-2px) scale(0.985);
   }
 }
 /*

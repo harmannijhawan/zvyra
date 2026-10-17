@@ -18,7 +18,16 @@ const MAX_OUTPUT_TOKENS = 32_768
 const AGENT_TOOLS = ALL_TOOL_DECLARATIONS.filter((d) => d.name !== 'run_task')
 
 export interface AgentProgress {
-  (update: { action?: string; reply?: string; step?: number; files?: string[]; thinking?: string }): void
+  /** `partial`: the reply text streamed so far (shown live before the model has finished). */
+  (update: { action?: string; reply?: string; step?: number; files?: string[]; thinking?: string; partial?: string }): void
+}
+
+/** What one model turn produced, assembled from the streamed chunks. */
+interface Turn {
+  content?: Content
+  functionCalls: FunctionCall[]
+  text: string
+  finishReason?: string
 }
 
 const tail = (p: unknown) => String(p ?? '').split(/[\\/]/).pop()
@@ -88,20 +97,24 @@ export class TextAgent {
       if (signal?.aborted) throw new Error('Cancelled')
       const t0 = Date.now()
       const beat = setInterval(() => onProgress({ thinking: `${files.size ? 'Writing the next file' : 'Designing the project'}… ${Math.round((Date.now() - t0) / 1000)}s` }), 4000)
-      let res: Awaited<ReturnType<TextAgent['generate']>>
+      let res: Turn
+      let firstTokenMs = 0
       try {
-        res = await this.generate(ai, contents, systemInstruction, signal)
+        res = await this.generate(ai, contents, systemInstruction, signal, (partial) => {
+          if (!firstTokenMs) firstTokenMs = Date.now() - t0
+          onProgress({ partial })
+        })
       } finally {
         clearInterval(beat)
       }
-      this.logger.info('agent', `step ${step + 1}`, { ms: Date.now() - t0, model: this.model, calls: res.functionCalls?.length ?? 0, finish: res.candidates?.[0]?.finishReason })
-      const cand = res.candidates?.[0]?.content
+      this.logger.info('agent', `step ${step + 1}`, { ms: Date.now() - t0, firstTokenMs: firstTokenMs || undefined, model: this.model, calls: res.functionCalls.length, finish: res.finishReason })
+      const cand = res.content
       if (cand?.parts?.length) contents.push(cand)
-      const calls: FunctionCall[] = res.functionCalls ?? []
+      const calls = res.functionCalls
       if (!calls.length) {
-        reply = (res.text ?? '').trim()
+        reply = res.text.trim()
         // A model that stops mid-build with "I'll now create…" gets nudged to keep working.
-        if (!reply && res.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+        if (!reply && res.finishReason === 'MAX_TOKENS') {
           contents.push({ role: 'user', parts: [{ text: 'Your last answer was cut off. Continue with the next tool call; split very large files into smaller ones.' }] })
           continue
         }
@@ -142,7 +155,12 @@ export class TextAgent {
     return { reply, actions, files: [...files] }
   }
 
-  private async generate(ai: GoogleGenAI, contents: Content[], systemInstruction: string, signal?: AbortSignal) {
+  /**
+   * One model turn, streamed: reply text reaches the UI as it is generated
+   * (time-to-first-word instead of time-to-whole-answer). Every part is kept
+   * exactly as received, so function calls keep their thought signatures.
+   */
+  private async generate(ai: GoogleGenAI, contents: Content[], systemInstruction: string, signal: AbortSignal | undefined, onText: (partial: string) => void): Promise<Turn> {
     let lastErr: unknown
     const order = modelOrder(FLASH_MODELS, this.model)
     for (let i = 0; i < order.length; i++) {
@@ -151,7 +169,7 @@ export class TextAgent {
       // Deep thinking made every file take minutes; low thinking writes the same code far faster.
       const lowThinking = !TextAgent.noThinkingLevel.has(model)
       try {
-        const r = await ai.models.generateContent({
+        const stream = await ai.models.generateContentStream({
           model,
           contents,
           config: {
@@ -164,9 +182,30 @@ export class TextAgent {
             httpOptions: { retryOptions: { attempts: 1 } }
           }
         })
+        const parts: NonNullable<Content['parts']> = []
+        const functionCalls: FunctionCall[] = []
+        let text = ''
+        let finishReason: string | undefined
+        let lastEmit = 0
+        for await (const chunk of stream) {
+          const cand = chunk.candidates?.[0]
+          if (cand?.finishReason) finishReason = cand.finishReason
+          for (const p of cand?.content?.parts ?? []) {
+            parts.push(p)
+            if (p.functionCall) functionCalls.push(p.functionCall)
+            else if (typeof p.text === 'string' && !p.thought) text += p.text
+          }
+          // Stream plain answers only; once a tool call shows up this turn is work, not a reply.
+          const now = Date.now()
+          if (text && !functionCalls.length && now - lastEmit > 60) {
+            lastEmit = now
+            onText(text)
+          }
+        }
+        if (text && !functionCalls.length) onText(text)
         this.model = model
         markModelOk(model)
-        return r
+        return { content: parts.length ? { role: 'model', parts } : undefined, functionCalls, text, finishReason }
       } catch (err) {
         lastErr = err
         if (signal?.aborted) throw err
