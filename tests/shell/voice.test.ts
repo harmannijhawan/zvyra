@@ -1,16 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import { GEMINI_VOICES, isSleepPhrase, pickConversationalLiveModels } from '../../src/main/voice/catalog'
-import { buildKeywords, WAKE_LABEL } from '../../src/main/voice/keywords'
-import { pcm16ToFloat } from '../../src/main/voice/wakeSpotter'
+import { buildKeywords, WAKE_LABEL, WAKE_LABEL_LOOSE } from '../../src/main/voice/keywords'
+import { pcm16ToFloat, startsAfterPause } from '../../src/main/voice/wakeSpotter'
 
 describe('wake keywords', () => {
   it('emits one labelled line per pronunciation with sensitivity-driven threshold/boost', () => {
     const strict = buildKeywords(0.3).trim().split('\n')
     const loose = buildKeywords(0.9).trim().split('\n')
     expect(strict.length).toBeGreaterThanOrEqual(6)
-    for (const l of strict) expect(l).toMatch(new RegExp(`^▁(HE|HI|HIS|HA) .+ @${WAKE_LABEL} :[\\d.]+ #[\\d.]+$`))
+    for (const l of strict) expect(l).toMatch(new RegExp(`^▁(HE|HI|HIS|HA) .+ @(${WAKE_LABEL}|${WAKE_LABEL_LOOSE}) :[\\d.]+ #[\\d.]+$`))
     const th = (l: string) => Number(/#([\d.]+)/.exec(l)![1])
     expect(th(loose[0])).toBeLessThan(th(strict[0]))
+  })
+  it('makes look-alike phrases ("his veera") clearly stricter than the real wake word', () => {
+    const lines = buildKeywords(0.8).trim().split('\n')
+    const th = (l: string) => Number(/#([\d.]+)/.exec(l)![1])
+    const core = lines.find((l) => l.startsWith('▁HE Y ▁ Z V Y RA'))!
+    const alt = lines.find((l) => l.startsWith('▁HIS ▁VI RA'))!
+    expect(core).toContain(`@${WAKE_LABEL} `)
+    expect(alt).toContain(`@${WAKE_LABEL_LOOSE} `)
+    expect(th(alt)).toBeGreaterThan(th(core) + 0.05)
+  })
+})
+
+describe('wake verification', () => {
+  const frame = (amp: number) => Float32Array.from({ length: 1600 }, (_, i) => Math.sin(i / 5) * amp)
+  it('accepts a phrase said after a pause', () => {
+    expect(startsAfterPause([...Array.from({ length: 8 }, () => frame(0.002)), ...Array.from({ length: 10 }, () => frame(0.2))])).toBe(true)
+  })
+  it('rejects a look-alike in the middle of continuous speech', () => {
+    expect(startsAfterPause(Array.from({ length: 18 }, () => frame(0.18)))).toBe(false)
   })
 })
 

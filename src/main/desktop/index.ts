@@ -12,7 +12,7 @@
  *    back when it reports NOT_IMPLEMENTED, so engine upgrades win automatically.
  *  - Internal engine branding is removed from user-visible strings.
  */
-import { Notification, safeStorage, shell, BrowserWindow, dialog } from 'electron'
+import { Notification, powerMonitor, safeStorage, shell, BrowserWindow, dialog } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -474,7 +474,31 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     (e) => emit('task.event', e)
   )
 
-  function startBuild(instruction: string) {
+  /** No keyboard/mouse for a while, or the PC is locked. */
+  const userAway = () => {
+    try {
+      return powerMonitor.getSystemIdleState(calls.awayMinutes() * 60) !== 'active'
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Phone the user about a finished task when they asked for it, or when they
+   * are away from the PC and away-calls are on. Never throws.
+   */
+  const callAbout = (asked: boolean, message: string) => {
+    if (!asked && !(calls.wantsAwayCalls() && userAway())) return
+    void calls
+      .place(`Hi, this is ZVYRA. ${message}`)
+      .then(() => notify({ key: `call:${message}`, kind: 'info', title: 'Calling your phone', body: message.slice(0, 160), timeoutMs: 6000 }))
+      .catch((e) => {
+        ctx.logger.warn('calls', 'call failed', { message: String((e as Error)?.message ?? e) })
+        if (asked) notify({ key: `callfail:${message}`, kind: 'error', title: 'Couldn’t call you', body: String((e as Error)?.message ?? e).slice(0, 200), timeoutMs: 9000 })
+      })
+  }
+
+  function startBuild(instruction: string, o: { callWhenDone?: boolean } = {}) {
     const id = randomUUID()
     const startedAt = new Date().toISOString()
     let card: ToolActivity = { id, tool: 'run_task', kind: 'build', label: 'Building', subject: instruction.slice(0, 160), status: 'running', steps: [], startedAt, updatedAt: startedAt }
@@ -514,6 +538,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         activity('task.completed', `Builder finished: ${instruction.slice(0, 80)}`, r.files[0], 'success')
         notify({ key: `task:${id}`, kind: 'success', title: 'Build finished — done', body: r.reply.slice(0, 220), detail: r.files[0] ? r.files[0].replace(/[\\/][^\\/]+$/, '') : undefined, timeoutMs: 9000 })
         announce(`Done! Your build is finished: ${shortTitle(task.title)}.`)
+        callAbout(!!o.callWhenDone, `Your build is finished: ${shortTitle(task.title)}. ${r.reply.replace(/[`*_#]/g, '').slice(0, 300)}`)
       })
       .catch((err) => {
         const why = friendlyError(err).replace(/^Gemini Live: /, '')
@@ -523,6 +548,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         if (!ctrl.signal.aborted) {
           notify({ key: `task:${id}`, kind: 'error', title: 'Build failed', body: why, detail: instruction.slice(0, 120), timeoutMs: 10_000 })
           announce(`Sorry, the build stopped: ${why}`)
+          callAbout(!!o.callWhenDone, `The build ${shortTitle(task.title)} stopped. ${why}`)
         }
       })
       .finally(() => builds.delete(id))
@@ -557,14 +583,18 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     },
     projects: async () => (await visibleProjects()).map((p) => ({ id: p.id, name: p.name, path: p.path })),
     openInEditor: (path) => apps.openInEditor(path),
-    runTask: async (instruction) => {
+    runTask: async (instruction, o) => {
       if (!instruction.trim()) throw new Error('Empty instruction')
       if (!secrets.has(GEMINI_KEY)) {
         const t = await createTask({ instruction, source: 'voice' })
         activity('task.started', `Background task: ${t.title}`, undefined, 'info')
         return { id: t.id, title: t.title, status: t.status }
       }
-      return startBuild(instruction)
+      return startBuild(instruction, { callWhenDone: o?.callWhenDone })
+    },
+    callUser: async (message) => {
+      await calls.place(`Hi, this is ZVYRA. ${message}`)
+      return `Calling ${calls.status().destinationMasked ?? 'your phone'} now.`
     },
     extraRoots: async () => (await files.roots().catch(() => [])).map((r) => r.path),
     userApps: () => apps.list(),
@@ -694,6 +724,8 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         if (taskId) agentTasks.finish(taskId, bad ? { status: 'failed', error: r.reply, files: r.files } : { status: 'completed', summary: r.reply, files: r.files })
         // A finished build is announced out loud, like the background builder.
         if (r.files.length && !bad) announce(`Done! Your build is finished: ${shortTitle(text)}.`)
+        // Away from the PC while it worked: phone with the result.
+        if (taskId) callAbout(false, `${bad ? 'A task had problems' : 'Your task is done'}: ${shortTitle(text)}. ${r.reply.replace(/[`*_#]/g, '').slice(0, 300)}`)
         // Only real work gets a notification; plain answers stay in the island.
         if (r.files.length || r.actions.some((a) => !/— failed$/.test(a) && !/^(Checking status|Reading|Looking in|Reviewing)/.test(a))) {
           notify({
@@ -1332,7 +1364,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
 
     'calls.status': () => calls.status(),
     'calls.configure': (a) => calls.configure(a.provider, a.values),
-    'calls.setEnabled': (a) => calls.setEnabled(a.enabled, a.minPriority),
+    'calls.setEnabled': (a) => calls.setEnabled(a.enabled, a.minPriority, { callWhenAway: a.callWhenAway, awayMinutes: a.awayMinutes }),
     'calls.test': () => calls.place('This is a test call from ZVYRA. Work calls are set up correctly.'),
 
     'setup.state': () => setupState(),

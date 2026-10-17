@@ -33,6 +33,7 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
           island: resolve(__dirname, 'src/renderer/island.html'),
+          guide: resolve(__dirname, 'src/renderer/guide.html'),
           voice: resolve(__dirname, 'src/renderer/voice.html')
         }
       }

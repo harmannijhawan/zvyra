@@ -14,6 +14,8 @@ import { mediaControl, spotifySearchUri, youtubeResultsUrl, youtubeSearch, type 
 import { describeImage } from '../tools/vision'
 import { weather } from '../tools/weather'
 import { systemStatus } from '../tools/system'
+import { captureScreen, describeScreen, planGuide } from '../tools/screenVision'
+import { closeGuide, showGuide } from '../tools/screenGuide'
 
 export interface ToolHost extends DesktopToolHost {
   geminiKey(): string | null
@@ -25,6 +27,8 @@ export interface ToolHost extends DesktopToolHost {
     /** Opens the island preview if needed and resolves with a JPEG data URL. */
     capture(): Promise<string>
   }
+  /** Places a real phone call to the user's number (throws when calls aren't set up). */
+  callUser(message: string): Promise<string>
 }
 
 /* ---------------------------------------------------------------- declarations */
@@ -75,7 +79,7 @@ export const EXTRA_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'camera',
     description:
-      'The user’s webcam, shown live in the Dynamic Island. action=open shows the preview; action=look captures a frame and tells you what is visible (pass the user’s question) — you have NO vision without this; action=close turns the camera off. Call look whenever the user asks what you see, to look at something, read something they hold up, etc.',
+      'The user’s WEBCAM (the camera pointed at them), shown live in the Dynamic Island. Use ONLY when they talk about the camera or webcam, or want you to look at them or at something they hold up. NEVER use this for their screen, monitor, display, window, app, page or "what’s on my screen" — use look_at_screen for those. action=open shows the preview; action=look captures a frame and describes it (pass the question); action=close turns the camera off.',
     parameters: {
       type: Type.OBJECT,
       properties: { action: { type: Type.STRING, description: 'open | look | close' }, question: { type: Type.STRING, description: 'What to look for (look only)' } },
@@ -106,6 +110,29 @@ export const EXTRA_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
       required: ['action']
     }
+  },
+  {
+    name: 'look_at_screen',
+    description:
+      'See the user’s screen right now (a screenshot of the display they are using). Use whenever they say "look at my screen", "what’s this", "read this", "what’s wrong here", "what am I looking at", or ask about an error or page that is open. Pass their question.',
+    parameters: { type: Type.OBJECT, properties: { question: { type: Type.STRING } } }
+  },
+  {
+    name: 'show_me_how',
+    description:
+      'Teach the user how to do something in the app on their screen by DRAWING on top of it: numbered circles around what to click, arrows from step to step and handwritten labels, ending with "Done!". Use for "how do I…", "where is…", "show me where to click", "guide me". Pass the task in their words. Then tell them the steps briefly.',
+    parameters: { type: Type.OBJECT, properties: { task: { type: Type.STRING } }, required: ['task'] }
+  },
+  {
+    name: 'clear_drawing',
+    description: 'Remove the drawing that show_me_how put on the screen.',
+    parameters: { type: Type.OBJECT, properties: {} }
+  },
+  {
+    name: 'call_me',
+    description:
+      'Phone the user (their number from setup) and speak a message, e.g. when they say "call me", "call me when it’s done" (for a build, pass call_when_done to run_task instead), or something urgent needs them. Keep the message short and clear.',
+    parameters: { type: Type.OBJECT, properties: { message: { type: Type.STRING } }, required: ['message'] }
   },
   {
     name: 'clipboard',
@@ -159,6 +186,9 @@ const DONE_LABEL: Record<string, string> = {
   'Reading a page': 'Page read',
   'Playing on YouTube': 'Now playing',
   'Looking through the camera': 'What I see',
+  'Looking at your screen': 'On your screen',
+  'Drawing the steps': 'Follow the arrows',
+  'Calling you': 'Call placed',
   'PC status': 'PC status',
   Timer: 'Timer started'
 }
@@ -185,6 +215,12 @@ function describe(name: string, args: Record<string, unknown>): { kind: ToolKind
       return { kind: 'system', label: 'PC status' }
     case 'set_timer':
       return s('action').toLowerCase() === 'set' ? { kind: 'timer', label: 'Timer', subject: s('label') || undefined } : null
+    case 'look_at_screen':
+      return { kind: 'system', label: 'Looking at your screen', subject: s('question') || undefined }
+    case 'show_me_how':
+      return { kind: 'other', label: 'Drawing the steps', subject: s('task') }
+    case 'call_me':
+      return { kind: 'other', label: 'Calling you', subject: s('message').slice(0, 80) }
     default:
       return null
   }
@@ -208,9 +244,22 @@ function summarize(name: string, r: ToolResult): Pick<ToolActivity, 'summary' | 
       return { summary: `CPU ${r['cpuPercent']}% · RAM ${r['ramUsedGb']}/${r['ramTotalGb']} GB · Battery ${r['battery']}${r['diskFreeGb'] !== undefined ? ` · ${r['diskFreeGb']} GB free` : ''}` }
     case 'set_timer':
       return { summary: String(r['note'] ?? '') }
+    case 'look_at_screen':
+      return { summary: String(r['description'] ?? '') }
+    case 'show_me_how':
+      return { summary: Array.isArray(r['steps']) ? (r['steps'] as string[]).join('\n') : String(r['say'] ?? '') }
+    case 'call_me':
+      return { summary: String(r['note'] ?? '') }
     default:
       return {}
   }
+}
+
+/** "what's on my screen", "look at this window", "read my monitor"… — never a webcam request. */
+export function isScreenRequest(text: string): boolean {
+  const t = text.toLowerCase()
+  if (/\b(webcam|camera|cam)\b/.test(t)) return false
+  return /\b(screen|screens|monitor|display|desktop|window|tab|browser|page|website|app|error message|popup|pop-up|dialog)\b/.test(t)
 }
 
 /* ---------------------------------------------------------------- executor */
@@ -259,6 +308,7 @@ async function runExtra(host: ToolHost, name: string, args: Record<string, unkno
     }
     case 'camera': {
       const action = str('action').toLowerCase()
+      if (action === 'open' && isScreenRequest(str('question'))) return runExtra(host, 'look_at_screen', { question: str('question') }, signal)
       if (action === 'open') {
         host.camera.open()
         return { ok: true, note: 'The live camera preview is showing in the Dynamic Island.' }
@@ -270,6 +320,8 @@ async function runExtra(host: ToolHost, name: string, args: Record<string, unkno
       if (action !== 'look') return { error: 'Use open, look or close.' }
       const key = host.geminiKey()
       if (!key) return { error: 'Add a Gemini API key in Settings → Voice so I can see.' }
+      // A screen question must never switch the webcam on: answer it from a screenshot instead.
+      if (isScreenRequest(str('question'))) return runExtra(host, 'look_at_screen', { question: str('question') }, signal)
       const frame = await host.camera.capture()
       const description = await describeImage(key, frame, str('question'), signal)
       return { ok: true, source: 'webcam', description, note: 'The preview stays open until the user asks to close the camera.' }
@@ -305,6 +357,41 @@ async function runExtra(host: ToolHost, name: string, args: Record<string, unkno
       handle.unref?.()
       timers.set(id, { id, label, endsAt: Date.now() + ms, handle })
       return { ok: true, id, note: `${label} — ${fmtDuration(ms)} timer started.` }
+    }
+    case 'look_at_screen': {
+      const key = host.geminiKey()
+      if (!key) return { error: 'Add a Gemini API key in Settings → Voice so I can see your screen.' }
+      closeGuide()
+      const shot = await captureScreen()
+      const description = await describeScreen(key, shot, str('question'), signal)
+      host.activity('screen.looked', 'Looked at your screen', str('question').slice(0, 120) || undefined)
+      return { ok: true, source: 'screen', description }
+    }
+    case 'show_me_how': {
+      const key = host.geminiKey()
+      if (!key) return { error: 'Add a Gemini API key in Settings → Voice so I can see your screen.' }
+      const task = str('task')
+      if (!task) return { error: 'What should I show you?' }
+      closeGuide()
+      await new Promise((r) => setTimeout(r, 120)) // let the old drawing disappear before the screenshot
+      const shot = await captureScreen()
+      const plan = await planGuide(key, shot, task, signal)
+      if (!plan.steps.length) return { ok: true, drawn: 0, say: plan.say || 'I can’t see where to do that on this screen.', note: 'Nothing was drawn. Tell the user what to open first.' }
+      showGuide(shot.display, { steps: plan.steps, next: plan.next || undefined })
+      host.activity('screen.guide', `Showed how: ${task}`.slice(0, 120), plan.steps.map((s, i) => `${i + 1}. ${s.label}`).join('  '))
+      return { ok: true, drawn: plan.steps.length, steps: plan.steps.map((s, i) => `${i + 1}. ${s.label}`), say: plan.say, next: plan.next || undefined, note: 'The steps are drawn on the screen now. Say them briefly.' }
+    }
+    case 'clear_drawing':
+      closeGuide()
+      return { ok: true }
+    case 'call_me': {
+      const message = str('message')
+      if (!message) return { error: 'What should I say on the call?' }
+      try {
+        return { ok: true, note: await host.callUser(message) }
+      } catch (err) {
+        return { error: `${err instanceof Error ? err.message : String(err)} Set up calls in Settings → Notifications & calls.` }
+      }
     }
     case 'clipboard': {
       if (str('action').toLowerCase() === 'write') {

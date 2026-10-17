@@ -36,11 +36,11 @@ export function isTrustedSender(e: IpcMainInvokeEvent): boolean {
   if (dev) {
     try {
       const current = new URL(url), configured = new URL(dev)
-      return current.origin === configured.origin && ['/', '/index.html', '/island.html'].includes(current.pathname)
+      return current.origin === configured.origin && ['/', '/index.html', '/island.html', '/guide.html'].includes(current.pathname)
     } catch { return false }
   }
   const page = url.split('#')[0].split('?')[0]
-  return ['index.html', 'island.html'].some(name => page === pathToFileURL(resolve(__dirname, '../renderer', name)).href)
+  return ['index.html', 'island.html', 'guide.html'].some(name => page === pathToFileURL(resolve(__dirname, '../renderer', name)).href)
 }
 
 export function registerContractIpc(getBackend: () => ZvyraBackend, logger: ShellLogger) {

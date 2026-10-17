@@ -16,9 +16,13 @@ export interface CallsState {
   enabled: boolean
   minPriority: NotificationPriority
   lastCall?: CallProviderStatus['lastCall']
+  /** Phone the user when a task finishes or fails while they are away from the PC. */
+  callWhenAway?: boolean
+  /** Minutes without keyboard/mouse input (or a locked PC) that count as "away". */
+  awayMinutes?: number
 }
 
-export const CALLS_DEFAULT: CallsState = { provider: null, accountSid: '', from: '', to: '', enabled: false, minPriority: 'critical' }
+export const CALLS_DEFAULT: CallsState = { provider: null, accountSid: '', from: '', to: '', enabled: false, minPriority: 'critical', callWhenAway: true, awayMinutes: 5 }
 const TOKEN = 'twilio.authToken'
 
 export class CallService {
@@ -49,8 +53,20 @@ export class CallService {
       destinationMasked: s.to ? maskPhone(s.to) : undefined,
       fields,
       providers: [{ id: 'twilio', name: 'Twilio Programmable Voice' }],
-      lastCall: s.lastCall
+      lastCall: s.lastCall,
+      callWhenAway: s.callWhenAway ?? true,
+      awayMinutes: s.awayMinutes ?? 5
     }
+  }
+
+  /** Away-calls are on and calls are set up. */
+  wantsAwayCalls() {
+    const s = this.doc.get()
+    return this.configured() && (s.callWhenAway ?? true)
+  }
+
+  awayMinutes() {
+    return this.doc.get().awayMinutes ?? 5
   }
 
   configure(provider: string, values: Record<string, unknown>): CallProviderStatus {
@@ -67,9 +83,12 @@ export class CallService {
     return this.status()
   }
 
-  setEnabled(enabled: boolean, minPriority?: NotificationPriority): CallProviderStatus {
+  setEnabled(enabled: boolean, minPriority?: NotificationPriority, away?: { callWhenAway?: boolean; awayMinutes?: number }): CallProviderStatus {
     if (enabled && !this.configured()) throw new ZvyraError('NOT_CONFIGURED', 'Configure a call provider first', 'settings/notifications')
-    this.doc.set({ enabled, ...(minPriority ? { minPriority } : {}) })
+    const patch: Partial<CallsState> = { enabled, ...(minPriority ? { minPriority } : {}) }
+    if (typeof away?.callWhenAway === 'boolean') patch.callWhenAway = away.callWhenAway
+    if (typeof away?.awayMinutes === 'number' && Number.isFinite(away.awayMinutes)) patch.awayMinutes = Math.max(1, Math.min(240, Math.round(away.awayMinutes)))
+    this.doc.set(patch)
     return this.status()
   }
 

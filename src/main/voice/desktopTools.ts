@@ -266,7 +266,14 @@ export const DESKTOP_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     name: 'run_task',
     description:
       'Start ZVYRA’s builder agent in the background for a big job — complete multi-file websites/apps (e.g. an e-commerce store), long reports. It plans, writes every file, tests and opens the result while you keep talking. Give it the full request with every detail the user said.',
-    parameters: { type: Type.OBJECT, properties: { instruction: { type: Type.STRING } }, required: ['instruction'] }
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        instruction: { type: Type.STRING },
+        call_when_done: { type: Type.BOOLEAN, description: 'Phone the user when it finishes (they said "call me when it’s done").' }
+      },
+      required: ['instruction']
+    }
   },
   { name: 'get_status', description: 'What ZVYRA is doing: running tasks, approvals waiting, recent results.', parameters: { type: Type.OBJECT, properties: {} } }
 ]
@@ -286,7 +293,7 @@ export interface DesktopToolHost {
   activity(type: string, title: string, detail?: string, level?: 'info' | 'success' | 'warning' | 'error'): void
   /** Classified, approved (when needed) and executed by the terminal service; always the real outcome. */
   runCommand(command: string, o: CommandRequest): Promise<CommandOutcome>
-  runTask(instruction: string): Promise<{ id: string; title: string; status: string }>
+  runTask(instruction: string, o?: { callWhenDone?: boolean }): Promise<{ id: string; title: string; status: string }>
   status(): Promise<string>
   extraRoots(): Promise<string[]>
   userApps(): { id: string; name: string; path?: string }[]
@@ -603,7 +610,7 @@ export async function runDesktopTool(host: DesktopToolHost, name: string, args: 
       }
     }
     case 'run_task': {
-      const t = await host.runTask(str('instruction'))
+      const t = await host.runTask(str('instruction'), { callWhenDone: args['call_when_done'] === true })
       return { started: true, taskId: t.id, title: t.title, status: t.status, note: 'Running in the background; the user can follow it in Tasks.' }
     }
     case 'get_status':
@@ -620,6 +627,9 @@ export const AGENT_GUIDE = [
   'CONTROLLING THE PC: always prefer a dedicated tool over a command. Closing apps/windows/tabs → close_app ("close notepad" → name "notepad"; "close all tabs" / "close my browser" → name "browser"; "close everything" → "all apps"). Close only the current tab → press_keys "ctrl+w" with app set. Minimise/maximise/switch/show desktop → window. Shortcuts → press_keys. Lock, sleep, dark mode, brightness, Settings pages, shutdown/restart → pc_settings. Volume and music → media_control. Opening apps → launch_app; files, folders and websites → open. Not sure what’s open → list_open_apps. Act straight away; don’t ask for confirmation for these.',
   'COMMANDS: use run_command only when no tool fits — never to create or edit files (use create_file / edit_file) and never for things the tools above do. The default shell is Windows PowerShell 5.1: chain with ";" (NOT "&&" or "||"), use cmdlets (Get-ChildItem, Get-Process, Test-Path, Copy-Item), quote paths with spaces in single quotes, and don’t use bash syntax (ls -la, rm -rf, grep, export, sudo). For Command Prompt syntax (dir /b, &&, set X=1) pass shell="cmd". Run one clear command per call and check its result before the next. Installs, scripts and changes ask the user for approval automatically; you can’t approve anything yourself. If a result is denied, expired or blocked, stop that operation and tell the user plainly what didn’t happen. If a command failed, read its output and fix the cause or explain it.',
   `Folders: home ${HOME}; Downloads ${KNOWN.downloads}; Desktop ${KNOWN.desktop}; when no project is selected new work goes in ${PROJECTS_DIR}. Call get_workspace if you need to know where things go.`,
+  'SCREEN vs CAMERA: "see / look at / check my screen", "what’s on my screen", "what am I looking at", "read this page" → look_at_screen. The camera tool is ONLY for the webcam (when they say camera/webcam or want you to see them or an object they hold). Never turn the webcam on for a screen request.',
+  'SCREEN: you can see the user’s screen with look_at_screen (only when they ask or a task needs it). When they ask how to do something in an app, or where something is, use show_me_how: it draws circles, arrows and labels right on their screen; then say the steps in one or two sentences.',
+  'CALLS: call_me phones the user. When they ask to be called when a build or task finishes, start it with run_task and call_when_done=true.',
   'For questions about current facts, news, prices or anything you are unsure of, use web_search instead of guessing. Use play_media / media_control for music and videos, camera to look through the webcam, weather, system_status, set_timer and clipboard when they fit.',
   'Ask one short clarifying question only when an essential detail is missing and can’t be reasonably assumed. Otherwise pick sensible defaults and proceed.',
   'Never claim something was created, opened, run or done unless the tool result says ok (create_file reports verified:true). If a tool returns an error, say so honestly and suggest a fix.'

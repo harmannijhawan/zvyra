@@ -195,6 +195,22 @@ export class PersonalWake {
     this.medianLen = lens[Math.floor(lens.length / 2)] ?? 0
   }
 
+  get limit() {
+    return this.threshold
+  }
+
+  /**
+   * Distance from a clip (16 kHz floats) to the closest samples (average of the
+   * best two, or the best one when only one exists). Infinity = no usable data.
+   */
+  nearest(clip: Float32Array): number {
+    if (!this.templates.length) return Infinity
+    const feat = features(clip)
+    if (feat.length < 15 || feat.length > 320) return Infinity
+    const d = this.templates.map((t) => dtw(feat, t)).sort((a, b) => a - b)
+    return d.length > 1 ? (d[0] + d[1]) / 2 : d[0]
+  }
+
   /** Compare one spoken segment (16 kHz floats) against the user's samples. */
   match(segment: Float32Array): WakeMatch {
     if (this.templates.length < 3) return { score: Infinity, fired: false }

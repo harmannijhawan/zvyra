@@ -38,6 +38,9 @@ export interface ShellMethods {
   'island.moveTo': M<{ x: number; y: number; done?: boolean }, void>
   /** Bring the island forward without stealing focus (e.g. "Review" on an approval notification). */
   'island.reveal': M<void, IslandState>
+  /** Pen overlay ("show me how"): close it, or let its "Got it" button take clicks. */
+  'guide.close': M<void, void>
+  'guide.setInteractive': M<{ interactive: boolean }, void>
   'main.show': M<{ route?: string }, MainWindowState>
   'main.state': M<void, MainWindowState>
   'main.minimize': M<void, MainWindowState>
@@ -53,7 +56,7 @@ export type ShellMethodName = keyof ShellMethods
 
 export const SHELL_METHOD_NAMES = [
   'island.state', 'island.setMode', 'island.show', 'island.hide', 'island.close', 'island.setAlwaysOnTop',
-  'island.resetPosition', 'island.setInteractive', 'island.moveTo', 'island.reveal', 'main.show', 'main.state', 'main.minimize', 'main.toggleMaximize', 'main.close', 'app.quit',
+  'island.resetPosition', 'island.setInteractive', 'island.moveTo', 'island.reveal', 'guide.close', 'guide.setInteractive', 'main.show', 'main.state', 'main.minimize', 'main.toggleMaximize', 'main.close', 'app.quit',
   'app.backendMode'
 ] as const satisfies readonly ShellMethodName[]
 

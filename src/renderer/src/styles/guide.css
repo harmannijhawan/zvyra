@@ -1,0 +1,117 @@
+/* ZVYRA pen overlay: marker strokes with a soft glow, handwritten notes. */
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  user-select: none;
+}
+
+.guide {
+  position: fixed;
+  inset: 0;
+  overflow: visible;
+}
+
+.stroke {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 5px var(--c)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45));
+}
+
+.pen-tip {
+  filter: drop-shadow(0 0 7px var(--c)) drop-shadow(0 0 2px #fff);
+  transition: opacity 0.2s ease;
+}
+
+.badge {
+  transform-box: fill-box;
+  transform-origin: center;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+.badge text {
+  font: 800 15px 'Segoe UI', system-ui, sans-serif;
+  fill: #fff;
+}
+@keyframes pop {
+  from {
+    transform-box: fill-box;
+    scale: 0.2;
+    opacity: 0;
+  }
+}
+
+.note,
+.title,
+.next {
+  font-family: 'Ink Free', 'Segoe Print', 'Segoe Script', 'Comic Sans MS', cursive;
+  paint-order: stroke;
+  stroke: rgba(8, 10, 18, 0.85);
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+.note {
+  font-size: 25px;
+  font-weight: 700;
+}
+.note.done {
+  font-size: 28px;
+}
+.title {
+  font-size: 30px;
+  font-weight: 700;
+  fill: #fff;
+}
+.next {
+  font-size: 24px;
+  font-weight: 700;
+  fill: #cfe0ff;
+}
+@keyframes write {
+  from {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.got-it {
+  position: fixed;
+  top: 64px;
+  right: 28px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 18px;
+  font: 650 14px 'Segoe UI', system-ui, sans-serif;
+  color: #fff;
+  background: rgba(10, 14, 26, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.got-it:hover {
+  background: #2f6bff;
+}
+.got-it:focus-visible {
+  outline: 2px solid #8fc2ff;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge,
+  .note,
+  .title,
+  .next {
+    animation: none;
+  }
+}

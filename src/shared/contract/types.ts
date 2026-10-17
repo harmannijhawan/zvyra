@@ -782,6 +782,10 @@ export interface CallProviderStatus {
   fields: ConfigField[]
   providers: { id: string; name: string }[]
   lastCall?: { ts: ISODate; status: 'placed' | 'failed'; reference?: string; error?: string }
+  /** (1.5.0) Phone the user when a task finishes or fails while they are away. */
+  callWhenAway?: boolean
+  /** (1.5.0) Minutes without input (or a locked PC) that count as away. */
+  awayMinutes?: number
 }
 
 /* ------------------------------------------------------------------ */

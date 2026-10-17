@@ -244,7 +244,7 @@ export interface ZvyraMethods {
   'notifications.test': M<void, AppNotification>
   'calls.status': M<void, CallProviderStatus>
   'calls.configure': M<{ provider: string; values: Record<string, string | number | boolean> }, CallProviderStatus>
-  'calls.setEnabled': M<{ enabled: boolean; minPriority?: AppNotification['priority'] }, CallProviderStatus>
+  'calls.setEnabled': M<{ enabled: boolean; minPriority?: AppNotification['priority']; callWhenAway?: boolean; awayMinutes?: number }, CallProviderStatus>
   /** Places a real test call. Rejects with NOT_CONFIGURED when no provider is set up. */
   'calls.test': M<void, CallProviderStatus>
 

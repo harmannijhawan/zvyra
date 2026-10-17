@@ -3,7 +3,7 @@
  * tested with a tiny real request) → teach the wake word your voice → a short
  * tour with a live Dynamic Island demo.
  */
-import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, ExternalLink, Hammer, KeyRound, Mic, Minus, Radar, Camera as CameraIcon, Sparkles, Square, X, AudioLines, LoaderCircle, TriangleAlert, WandSparkles as Wand2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, ExternalLink, Hammer, KeyRound, Mic, Minus, MonitorSmartphone, PhoneCall, Radar, Camera as CameraIcon, Sparkles, Square, X, AudioLines, LoaderCircle, TriangleAlert, WandSparkles as Wand2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { KeyTestResult, SetupProvider } from '@shared/contract'
 import { ZMark, Wordmark } from '../components/brand'
@@ -13,11 +13,12 @@ import { setWakeWord } from '../lib/hooks'
 import { getState, setState, useStore } from '../lib/store'
 import './onboarding.css'
 
-type Step = 'welcome' | 'connect' | 'voice' | 'tour'
+type Step = 'welcome' | 'connect' | 'voice' | 'phone' | 'tour'
 const STEPS: { id: Step; label: string }[] = [
   { id: 'welcome', label: 'Welcome' },
   { id: 'connect', label: 'Connect AI' },
   { id: 'voice', label: 'Your voice' },
+  { id: 'phone', label: 'Your phone' },
   { id: 'tour', label: 'Quick tour' }
 ]
 
@@ -72,6 +73,7 @@ export function Onboarding() {
         {step === 'welcome' && <Welcome name={name} setName={setName} onNext={() => go(1)} />}
         {step === 'connect' && <Connect onBack={() => go(-1)} onNext={() => go(1)} />}
         {step === 'voice' && <VoiceStep onBack={() => go(-1)} onNext={() => go(1)} />}
+        {step === 'phone' && <PhoneStep onBack={() => go(-1)} onNext={() => go(1)} />}
         {step === 'tour' && <Tour name={name} onBack={() => go(-1)} onFinish={() => void finish()} finishing={finishing} />}
       </main>
     </div>
@@ -365,13 +367,158 @@ function VoiceStep({ onBack, onNext }: { onBack: () => void; onNext: () => void 
   )
 }
 
-/* ------------------------------------------------------------------ 4. tour */
+/* ------------------------------------------------------------------ 4. phone */
+
+/** "+91 98765-43210" → "+919876543210" */
+const cleanPhone = (s: string) => s.trim().replace(/[\s().-]/g, '').replace(/^00/, '+')
+const e164 = (s: string) => /^\+[1-9]\d{6,14}$/.test(cleanPhone(s))
+
+function PhoneStep({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+  const [me, setMe] = useState('')
+  const [sid, setSid] = useState('')
+  const [token, setToken] = useState('')
+  const [from, setFrom] = useState('')
+  const [away, setAway] = useState(true)
+  const [state, setStateX] = useState<'idle' | 'saving' | 'saved' | 'calling' | 'called' | 'error'>('idle')
+  const [msg, setMsg] = useState<string | null>(null)
+  const [hasToken, setHasToken] = useState(false)
+
+  useEffect(() => {
+    call('calls.status')
+      .then((s) => {
+        const v = (k: string) => String(s.fields.find((f) => f.key === k)?.value ?? '')
+        setMe(v('to'))
+        setSid(v('accountSid'))
+        setFrom(v('from'))
+        setHasToken(!!s.fields.find((f) => f.key === 'authToken')?.hasValue)
+        setAway(s.callWhenAway ?? true)
+        if (s.configured) setStateX('saved')
+      })
+      .catch(() => undefined)
+  }, [])
+
+  const ready = e164(me) && e164(from) && /^AC[0-9a-fA-F]{32}$/.test(sid.trim()) && (token.trim() || hasToken)
+  const save = async () => {
+    setStateX('saving')
+    setMsg(null)
+    try {
+      const s = await call('calls.configure', { provider: 'twilio', values: { to: cleanPhone(me), from: cleanPhone(from), accountSid: sid.trim(), authToken: token.trim() } })
+      await call('calls.setEnabled', { enabled: s.enabled, callWhenAway: away, awayMinutes: 5 })
+      setToken('')
+      setHasToken(true)
+      setStateX('saved')
+      setMsg('Saved. ZVYRA can call you now.')
+    } catch (e) {
+      setStateX('error')
+      setMsg(errorMessage(e))
+    }
+  }
+  const test = async () => {
+    setStateX('calling')
+    setMsg(null)
+    try {
+      await call('calls.test')
+      setStateX('called')
+      setMsg('Your phone should ring in a few seconds.')
+    } catch (e) {
+      setStateX('error')
+      setMsg(errorMessage(e))
+    }
+  }
+
+  return (
+    <section className="ob-panel wide">
+      <header className="ob-head">
+        <span className="ob-head-icon">
+          <PhoneCall />
+        </span>
+        <div>
+          <h1>Let ZVYRA call you</h1>
+          <p>
+            Add your number so ZVYRA can phone you when a build or task finishes while you’re away from the PC, or whenever you say “call me”. Calls go through your own free Twilio account (it gives you a number to call from). Everything is stored encrypted on this PC.
+          </p>
+        </div>
+      </header>
+
+      <div className="ob-providers">
+        <div className={`ob-prov ${state === 'saved' || state === 'called' ? 'st-ok' : state === 'error' ? 'st-error' : ''}`}>
+          <div className="ob-prov-top">
+            <span className="ob-prov-badge">☎</span>
+            <div className="ob-prov-text">
+              <div className="ob-prov-name">
+                Your phone number
+                {(state === 'saved' || state === 'called') && (
+                  <span className="ob-pill ok">
+                    <Check /> Ready
+                  </span>
+                )}
+              </div>
+              <div className="ob-prov-purpose">With country code, e.g. +91 98765 43210 or +1 415 555 0123</div>
+            </div>
+          </div>
+          <div className="ob-prov-row">
+            <input className="ob-input" value={me} onChange={(e) => setMe(e.target.value)} placeholder="+91 98765 43210" aria-label="Your phone number" inputMode="tel" autoComplete="tel" />
+          </div>
+        </div>
+
+        <div className="ob-prov">
+          <div className="ob-prov-top">
+            <span className="ob-prov-badge">T</span>
+            <div className="ob-prov-text">
+              <div className="ob-prov-name">
+                Twilio account <span className="ob-pill">Free trial works</span>
+              </div>
+              <div className="ob-prov-purpose">Sign up, verify your own number, then copy the Account SID, Auth token and your Twilio phone number from the Twilio Console.</div>
+            </div>
+            <a className="ob-link" href="https://www.twilio.com/try-twilio" target="_blank" rel="noreferrer">
+              Get Twilio <ExternalLink />
+            </a>
+          </div>
+          <div className="ob-prov-row ob-phone-grid">
+            <input className="ob-input" value={sid} onChange={(e) => setSid(e.target.value)} placeholder="Account SID (AC…)" aria-label="Twilio Account SID" spellCheck={false} autoComplete="off" />
+            <input className="ob-input" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={hasToken ? 'Auth token (saved)' : 'Auth token'} aria-label="Twilio auth token" autoComplete="off" />
+            <input className="ob-input" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Twilio number (+1…)" aria-label="Twilio phone number" inputMode="tel" />
+          </div>
+          <label className="ob-check">
+            <input type="checkbox" checked={away} onChange={(e) => setAway(e.target.checked)} /> Call me when a task finishes while I’m away from the PC (no input for 5 minutes, or locked)
+          </label>
+        </div>
+        {msg && (
+          <div className={`ob-prov-msg ${state === 'error' ? 'bad' : 'ok'}`} role="status">
+            {state === 'error' ? <TriangleAlert /> : <Check />} {msg}
+          </div>
+        )}
+      </div>
+
+      <footer className="ob-foot">
+        <button type="button" className="ob-btn ghost" onClick={onBack}>
+          <ArrowLeft /> Back
+        </button>
+        <span className="ob-grow" />
+        {(state === 'saved' || state === 'called') && (
+          <button type="button" className="ob-btn ghost" onClick={() => void test()}>
+            <PhoneCall /> Test call
+          </button>
+        )}
+        <button type="button" className="ob-btn primary" disabled={!ready || state === 'saving' || state === 'calling'} onClick={() => void save()}>
+          {state === 'saving' ? <LoaderCircle className="spin" /> : <Check />} Save
+        </button>
+        <button type="button" className={`ob-btn ${state === 'saved' || state === 'called' ? 'primary' : 'ghost'}`} onClick={onNext}>
+          {state === 'saved' || state === 'called' ? 'Continue' : 'Skip'} <ArrowRight />
+        </button>
+      </footer>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ 5. tour */
 
 const FEATURES = [
   { icon: AudioLines, title: 'Just talk', say: '“Hey Zvyra, play some lofi on YouTube”', body: 'Natural voice conversations, music and media control. Interrupt any time; say “go to sleep” to finish.' },
   { icon: Radar, title: 'Research', say: '“Find the best budget laptops this year”', body: 'Searches the live web and shows sources as cards in the Dynamic Island.' },
   { icon: Hammer, title: 'Build', say: '“Build me an e-commerce site for sneakers”', body: 'The builder agent writes every file, tests the page and opens it for you.' },
-  { icon: CameraIcon, title: 'See', say: '“Open my camera — what am I holding?”', body: 'A live camera preview in the island; ZVYRA describes what it sees.' }
+  { icon: CameraIcon, title: 'See', say: '“Open my camera — what am I holding?”', body: 'A live camera preview in the island; ZVYRA describes what it sees.' },
+  { icon: MonitorSmartphone, title: 'Show me how', say: '“How do I turn on dark mode here?”', body: 'ZVYRA looks at your screen and draws circles and arrows: click here, then here, done.' }
 ]
 
 const PLACES = [

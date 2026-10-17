@@ -32,6 +32,7 @@ import type { ShellLogger } from '../backendContext'
 import { broadcast, isTrustedSender, toErrorShape } from '../ipc'
 import { renderZIcon } from './iconRaster'
 import { dockedBounds } from './islandGeometry'
+import { closeGuide, setGuideInteractive } from '../tools/screenGuide'
 import { ShellStateStore } from './shellState'
 import { runQaCapture } from './qaCapture'
 
@@ -572,6 +573,8 @@ export class Shell {
         this.revealIsland()
         return this.islandState()
       },
+      'guide.close': () => closeGuide(),
+      'guide.setInteractive': ({ interactive }) => setGuideInteractive(!!interactive),
       'island.setInteractive': ({ interactive }) => {
         const win = this.island
         if (!win || win.isDestroyed()) return

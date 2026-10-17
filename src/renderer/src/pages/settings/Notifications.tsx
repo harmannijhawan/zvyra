@@ -136,13 +136,36 @@ function CallSettings() {
               </div>
             </>
           )}
-          <Row label="Allow ZVYRA to call me" help="For blocked or critical work when you’re away.">
+          <Row label="Call me for urgent alerts" help="Blocked or critical work, by the priority below.">
             <Toggle
               checked={s.enabled}
               disabled={!s.configured}
               label="Allow calls"
               onChange={(v) => void run(() => call('calls.setEnabled', { enabled: v })).then((r) => r && setS(r))}
             />
+          </Row>
+          <Row label="Call me when a task finishes while I’m away" help="Away = no keyboard or mouse for the time below, or the PC is locked. You can always say “call me”.">
+            <Toggle
+              checked={s.callWhenAway ?? true}
+              disabled={!s.configured}
+              label="Call when away"
+              onChange={(v) => void run(() => call('calls.setEnabled', { enabled: s.enabled, callWhenAway: v })).then((r) => r && setS(r))}
+            />
+          </Row>
+          <Row label="Away after">
+            <select
+              className="select"
+              value={String(s.awayMinutes ?? 5)}
+              disabled={!s.configured || s.callWhenAway === false}
+              onChange={(e) => void run(() => call('calls.setEnabled', { enabled: s.enabled, awayMinutes: Number(e.target.value) })).then((r) => r && setS(r))}
+              aria-label="Minutes before you count as away"
+            >
+              {[2, 5, 10, 15, 30, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m} minutes
+                </option>
+              ))}
+            </select>
           </Row>
           <Row label="Only call for priority">
             <select

@@ -822,7 +822,7 @@
 
 .ob-features {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 .ob-feature {
@@ -948,4 +948,25 @@
 /* Twinkling sparkle stars removed (all other motion kept). */
 .ob-star {
   display: none;
+}
+
+/* Phone step */
+.ob-phone-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr;
+  gap: 8px;
+}
+.ob-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: rgba(225, 232, 255, 0.78);
+  cursor: pointer;
+}
+.ob-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2f6bff;
 }

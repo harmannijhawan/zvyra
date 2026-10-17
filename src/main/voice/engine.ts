@@ -29,7 +29,7 @@ import type { Interaction, MicDevice, VoiceEngineOption, VoiceState, VoiceStatus
 import type { VoiceCommand, VoiceWindowEvent } from '../../shared/voiceIo'
 import type { ShellLogger } from '../backendContext'
 import { DEFAULT_LIVE_MODEL, DEFAULT_VOICE, GEMINI_VOICES, isSleepPhrase, pickConversationalLiveModels, type LiveModel } from './catalog'
-import { pcm16ToFloat, WakeSpotter } from './wakeSpotter'
+import { concatFrames, pcm16ToFloat, startsAfterPause, WakeSpotter } from './wakeSpotter'
 import { PersonalWake, SpeechSegmenter, wavHeader } from './personalWake'
 import { AGENT_GUIDE } from './desktopTools'
 import { ALL_TOOL_DECLARATIONS, runTool, type ToolHost } from './extraTools'
@@ -78,6 +78,12 @@ const SILENCE_RMS = 0.018
 const SPEECH_MIN_MS = 150
 /** If the model hasn't started answering this long after the user stopped, drop the "processing" state. */
 const REPLY_GUARD_MS = 12_000
+/** 100 ms frames of standby audio kept for verifying a wake (~1.8 s, the length of "Hey Zvyra"). */
+const WAKE_RING_FRAMES = 18
+/** No words heard this long after a wake → it was a false wake: go back to standby quietly. */
+const FALSE_WAKE_MS = 10_000
+const MAX_AUTO_SAMPLES = 10
+const MAX_NEGATIVE_SAMPLES = 24
 
 // Builder-only tools stay with the background agent; voice hands big builds to run_task.
 const VOICE_SKIP = new Set(['edit_file', 'list_tree', 'check_site'])
@@ -127,6 +133,12 @@ export class VoiceEngine {
   private awaitTimer: NodeJS.Timeout | null = null
   private toolsRunning = 0
   private wakeAt = 0
+  /* Wake-word accuracy: last ~2 s of standby audio, ZVYRA's own playback, and the clip that woke us. */
+  private wakeRing: Float32Array[] = []
+  private lastOutAt = 0
+  private wakeClip: Float32Array | null = null
+  private wakeCheck: { timer: NodeJS.Timeout; session: number } | null = null
+  private negativeWake: PersonalWake | null = null
 
   constructor(private readonly d: VoiceEngineDeps) {}
 
@@ -358,6 +370,7 @@ export class VoiceEngine {
         break
       case 'outLevel':
         this.outLevel = ev.level
+        if (ev.level > 0.02) this.lastOutAt = Date.now()
         if (this.phase === 'speaking') this.d.emit('voice.level', { level: ev.level })
         break
     }
@@ -389,11 +402,14 @@ export class VoiceEngine {
     switch (this.phase) {
       case 'standby': {
         if (process.env['ZVYRA_WAKE_DEBUG']) this.wakeDebug(pcm, rms, now)
+        this.wakeRing.push(floats)
+        if (this.wakeRing.length > WAKE_RING_FRAMES) this.wakeRing.shift()
         // Personal wake word: the user's own recorded “Hey Zvyra” samples.
         const segment = this.segmenter.push(floats, rms)
         if (segment && this.onSegment(segment, pcm, now)) return
         try {
-          if (this.spotterFor(this.d.getConfig()).feed(floats, now)) this.onWake()
+          const hit = this.spotterFor(this.d.getConfig()).feed(floats, now)
+          if (hit) this.verifyWake(hit, now)
         } catch (err) {
           this.fail(`Wake word engine failed: ${err instanceof Error ? err.message : String(err)}`)
         }
@@ -494,6 +510,15 @@ export class VoiceEngine {
     return this.personalWake
   }
 
+  private get negativesDir() {
+    return join(this.d.workDir, 'wake-negatives')
+  }
+
+  private negatives() {
+    if (!this.negativeWake) this.negativeWake = new PersonalWake(this.negativesDir)
+    return this.negativeWake
+  }
+
   /** Returns true when the segment woke ZVYRA (or was consumed as a training sample). */
   private onSegment(segment: Float32Array, _pcm: Uint8Array, now: number): boolean {
     if (this.training > 0) {
@@ -507,12 +532,113 @@ export class VoiceEngine {
     const m = pw.match(segment)
     if (Number.isFinite(m.score) && m.score < 13) this.d.logger.info('voice', 'personal wake', { score: +m.score.toFixed(2), fired: m.fired })
     if (m.fired && now >= this.personalCooldown) {
+      // A clip that sounds more like an earlier false wake than like the user's "Hey Zvyra" is ignored.
+      const neg = this.negatives().nearest(segment)
+      if (neg < m.score) {
+        this.d.logger.info('voice', 'wake rejected', { why: 'matches a previous false wake', score: +m.score.toFixed(2), negative: +neg.toFixed(2) })
+        return false
+      }
+      if (this.echoing(now)) return false
       this.personalCooldown = now + 2000
       this.spotter?.reset()
+      this.wakeClip = segment
       this.onWake()
       return true
     }
     return false
+  }
+
+  /** ZVYRA's own voice is (or just was) coming out of the speakers. */
+  private echoing(now: number) {
+    if (now - this.lastOutAt < 1500) {
+      this.d.logger.info('voice', 'wake rejected', { why: 'ZVYRA was speaking' })
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Second stage for keyword-spotter hits. The spotter is tuned to catch the
+   * wake word easily; this check removes false triggers:
+   *  - never while ZVYRA's own audio plays (echo),
+   *  - clips that match an earlier false wake are rejected,
+   *  - with the user's voice samples (recorded or learned), the clip must sound like them,
+   *  - accent look-alikes ("his veera") must start after a pause, not mid-sentence.
+   */
+  private verifyWake(kind: 'core' | 'loose', now: number) {
+    if (now < this.personalCooldown || this.echoing(now)) return
+    const clip = concatFrames(this.wakeRing)
+    const pw = this.personal()
+    const s = this.d.getConfig().sensitivity
+    pw.setThreshold(9.4 + s * 2)
+    const pos = pw.nearest(clip)
+    const neg = this.negatives().nearest(clip)
+    const reject = (why: string) => this.d.logger.info('voice', 'wake rejected', { why, kind, score: Number.isFinite(pos) ? +pos.toFixed(2) : null, negative: Number.isFinite(neg) ? +neg.toFixed(2) : null })
+    if (neg < pos && neg < pw.limit * 1.15) return reject('matches a previous false wake')
+    if (pw.count >= 3) {
+      // The spotter already agrees, so the voice match can be a little looser than the personal-only path.
+      const allowed = pw.limit * (kind === 'core' ? 1.35 : 1.12)
+      if (!(pos <= allowed)) return reject('does not sound like your “Hey Zvyra”')
+    } else if (kind === 'loose' && !startsAfterPause(this.wakeRing)) {
+      return reject('look-alike phrase in the middle of speech')
+    }
+    this.d.logger.info('voice', 'wake verified', { kind, score: Number.isFinite(pos) ? +pos.toFixed(2) : null })
+    this.personalCooldown = now + 2000
+    this.wakeClip = clip
+    this.onWake()
+  }
+
+  /** Called when the woken conversation hears real words: this wake was right, so learn from it. */
+  private confirmWake(learn: boolean) {
+    if (!this.wakeCheck) return
+    clearTimeout(this.wakeCheck.timer)
+    this.wakeCheck = null
+    const clip = this.wakeClip
+    this.wakeClip = null
+    if (clip && learn) this.saveSample(this.templatesDir, 'auto', clip, MAX_AUTO_SAMPLES, () => this.personal().reload())
+  }
+
+  /** After a wake: if no words arrive in time, it was a false wake. */
+  private armWakeCheck() {
+    const session = this.sessionId
+    const arm = (ms: number): NodeJS.Timeout =>
+      setTimeout(() => {
+        if (!this.wakeCheck || this.sessionId !== session) return
+        // Still talking or ZVYRA is answering: give it a little longer.
+        if (this.userSpeaking || this.modelTurnActive || this.toolsRunning > 0 || this.phase === 'speaking') {
+          this.wakeCheck.timer = arm(4000)
+          return
+        }
+        if (this.phase === 'listening') this.falseWake()
+      }, ms)
+    this.wakeCheck = { session, timer: arm(FALSE_WAKE_MS) }
+  }
+
+  /** Woke up but nobody spoke: remember the clip so the same sound won't wake ZVYRA again. */
+  private falseWake() {
+    this.wakeCheck = null
+    const clip = this.wakeClip
+    this.wakeClip = null
+    if (clip) this.saveSample(this.negativesDir, 'neg', clip, MAX_NEGATIVE_SAMPLES, () => this.negatives().reload())
+    this.d.logger.info('voice', 'false wake: nothing was said, back to standby')
+    this.sleep('false-wake')
+  }
+
+  private saveSample(dir: string, prefix: string, clip: Float32Array, max: number, after: () => void) {
+    try {
+      const sec = clip.length / 16000
+      if (sec < 0.35 || sec > 3) return
+      mkdirSync(dir, { recursive: true })
+      const body = Buffer.alloc(clip.length * 2)
+      for (let i = 0; i < clip.length; i++) body.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(clip[i] * 32767))), i * 2)
+      writeFileSync(join(dir, `${prefix}-${Date.now()}.wav`), Buffer.concat([wavHeader(body.length), body]))
+      const mine = readdirSync(dir).filter((f) => f.startsWith(`${prefix}-`)).sort()
+      for (const f of mine.slice(0, Math.max(0, mine.length - max))) rmSync(join(dir, f), { force: true })
+      after()
+      this.d.logger.info('voice', prefix === 'auto' ? 'learned from a real wake' : 'learned a false wake', { seconds: +sec.toFixed(2) })
+    } catch (err) {
+      this.d.logger.warn('voice', 'could not save wake sample', { message: String(err) })
+    }
   }
 
   private saveTemplate(segment: Float32Array) {
@@ -623,6 +749,8 @@ export class VoiceEngine {
     this.wakeAt = 0
     for (const f of this.preRoll) this.send(f)
     this.preRoll = []
+    if (reason === 'wake') this.armWakeCheck()
+    else this.wakeClip = null
     this.touch()
     this.publish()
   }
@@ -817,6 +945,11 @@ export class VoiceEngine {
     const userText = sc.inputTranscription?.text
     if (userText) {
       this.partial = (this.partial + userText).replace(/\s+/g, ' ')
+      // Real words after a wake: it was a true wake (two or more words → learn this voice clip).
+      if (this.wakeCheck) {
+        const words = this.partial.trim().split(/\s+/).filter((w) => /\p{L}{2,}/u.test(w)).length
+        if (words) this.confirmWake(words >= 2)
+      }
       this.touch()
       this.d.emit('voice.transcript', { text: this.partial.trim(), final: false })
       this.upsertInteraction({ input: this.partial.trim() })
@@ -952,6 +1085,8 @@ export class VoiceEngine {
     }
     if (this.idleTimer) clearTimeout(this.idleTimer)
     this.idleTimer = null
+    if (this.wakeCheck) clearTimeout(this.wakeCheck.timer)
+    this.wakeCheck = null
     this.modelTurnActive = false
     this.resetLive()
     this.finishInteraction('done')
@@ -968,7 +1103,8 @@ export class VoiceEngine {
     this.spotter?.reset()
     if (this.phase === 'standby') this.prefetchContext()
     if (this.phase === 'off') this.stopCapture()
-    if (wasActive && why !== 'cancel') this.cmd({ type: 'chime', kind: 'sleep' })
+    if (wasActive && why !== 'cancel' && why !== 'false-wake') this.cmd({ type: 'chime', kind: 'sleep' })
+    this.wakeRing = []
     this.d.emit('voice.level', { level: 0 })
     this.publish()
   }
