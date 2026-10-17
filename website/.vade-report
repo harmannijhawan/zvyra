@@ -1,0 +1,51 @@
+# Vercel Speed Insights Installation Report
+
+## Summary
+Successfully installed and configured Vercel Speed Insights for the ZVYRA website project following the latest official documentation.
+
+## Changes Made
+
+### 1. Package Installation
+- Added `@vercel/speed-insights` version ^2.0.0 to dependencies
+- Updated package-lock.json with the new package and its 25 dependencies
+
+### 2. Code Integration (website/src/App.tsx)
+- Imported `SpeedInsights` component from `@vercel/speed-insights/react`
+- Added `<SpeedInsights />` component at the root level of the App component
+- Placed after the Footer component to ensure it monitors all page interactions
+
+### 3. Files Modified
+- `website/package.json` - Added @vercel/speed-insights dependency
+- `website/package-lock.json` - Updated with new package dependencies
+- `website/src/App.tsx` - Added SpeedInsights component integration
+
+## Implementation Details
+
+The implementation follows the official Vercel Speed Insights quickstart guide (https://vercel.com/docs/speed-insights/quickstart):
+
+1. **Framework**: React + Vite
+2. **Package Manager**: npm
+3. **Integration Point**: Root App component (website/src/App.tsx)
+4. **Component Placement**: Added at the end of the JSX tree for optimal performance monitoring
+
+The SpeedInsights component will automatically track Core Web Vitals and performance metrics once the application is deployed to Vercel. The tracking script integrates via `/_vercel/speed-insights/*` endpoints.
+
+## Verification
+
+✅ TypeScript type checking passes (npm run typecheck)
+✅ Build completes successfully (npm run build)
+✅ No linting or compilation errors
+✅ Lock files properly updated
+
+## Next Steps
+
+After deployment to Vercel:
+1. The Speed Insights will automatically begin collecting performance data
+2. Metrics will be visible in the Vercel dashboard under the Speed Insights section
+3. Allow several days of user traffic for comprehensive analytics
+
+## Notes
+
+- The integration is non-intrusive and requires no additional configuration
+- Performance tracking happens automatically without impacting user experience
+- All changes preserve the existing code structure and functionality
