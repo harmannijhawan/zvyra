@@ -33,7 +33,7 @@
 | Memory, projects, knowledge and persistence | Shared database/file implementation; startup produced no observed fallback. Persistence CRUD, restart recovery and database migration were not exercised on Mac. |
 | Secure key storage | Uses Electron `safeStorage`; the code is not a direct DPAPI-only implementation, despite Windows-oriented labels. Mac Keychain storage/retrieval still needs testing. |
 | Camera / visual questions | Browser capture implementation and usage descriptions exist. Real camera permission, preview, capture and AI image responses were not tested. Intel runner warned about missing Continuity Camera usage configuration; physical Continuity Camera support is unverified. |
-| Timers, scheduler, notifications and calls | Shared implementations exist. Notification permissions, resume/sleep behavior, scheduler execution, and Twilio calls were not exercised. Calls require provider configuration. |
+| Timers, scheduler, notifications and calls | Shared implementations exist. Notification permissions, resume/sleep behavior, scheduler execution, and Calls are now through WhatsApp Desktop. |
 | Tray, shortcuts and launch at login | Menu-bar icon and app UI visible in screenshots. Global shortcut behavior was not exercised. Both runner logs reported permission denial while setting a login item; launch at login is not verified on a user Mac. |
 | Installation trust | Current builds are unsigned/not notarized previews. A normal download's Gatekeeper/quarantine flow was not tested. |
 

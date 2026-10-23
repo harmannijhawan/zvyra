@@ -1,6 +1,6 @@
 # ZVYRA UI ↔ Backend Integration Contract
 
-Contract version: **1.1.0** (`src/shared/contract/index.ts → CONTRACT_VERSION`)
+Contract version: **1.6.0** (`src/shared/contract/index.ts → CONTRACT_VERSION`)
 
 This is the coordination point between the UI (Kiro) and the backend (GPT-6 Astra).
 The UI only talks to the backend through this contract. The backend only reaches the UI through it.
@@ -75,12 +75,21 @@ Derived in the UI (`src/renderer/src/lib/companion.ts`) from voice state, tasks,
 
 ## Changelog
 
+- **1.6.0** (Kiro) — **Breaking**: Twilio calls removed, replaced with WhatsApp Desktop voice calls.
+  New Kiro-owned **WhatsApp call service** (`src/main/desktop/whatsappCalls.ts`) provides automatic task-completion calls and voice-commanded contact search ("call Rachna"). Integrates existing WhatsApp Desktop automation (`whatsappVision.ts`), assisted call audio routing with VB-CABLE (`callAgent.ts`), and natural voice conversation during calls. Methods: `whatsappCalls.state`, `whatsappCalls.update`, `whatsappCalls.checkReadiness`, `whatsappCalls.resolveContact`, `whatsappCalls.startCall`, `whatsappCalls.endCall`, `whatsappCalls.getStatus`, `whatsappCalls.handBack`, `whatsappCalls.takeOver`, `whatsappCalls.isActive`. Types: `WhatsAppCallsState`, `CallLine`.
+  **Removed:** `calls.status`, `calls.configure`, `calls.setEnabled`, `calls.test`, the `CallProviderStatus` type, `Capability 'calls'`, and the `call` field of `AppNotification.delivered` (now `{ desktop, spoken }`).
+  Calls are now through WhatsApp Desktop (requires the Windows desktop backend; the iOS and mock backends report unavailable).
+
+- **1.5.0** (Kiro) — Additive: `AppSettings.assistant` — `stayAwake` (a voice conversation stays open until you end it) and `autonomous` (commands run without approval popups; blocked commands stay blocked).
+
+- **1.4.0** (Kiro) — Additive: saved "Always allow" command rules. `CommandRule` type, `permissions.rules` / `permissions.revokeRule` methods, `PermissionDecision` gains `allow_always`, `terminal.run` gains `shell` (`powershell` | `cmd`), and the permission payload gains `command`, `reason`, `targets` and `canAlwaysAllow`.
+
 - **1.3.0** (Kiro) — Additive: `VoiceStatus.micLabel?`. Voice is now owned by the Kiro voice engine (`src/main/voice`), wired through the desktop layer for every `voice.*` method:
   on-device "Hey Zvyra" wake word (sherpa-onnx open-vocabulary keyword spotter, model in `resources/kws`) → Gemini Live native-audio conversation (model + voice discovered/selectable; key stored with DPAPI under `desktop/secrets.json`) with barge-in, transcripts, idle sleep, and tools (`run_task`, `get_status`, `open_website`, `launch_app`, `end_conversation`). Mic capture/playback runs in a hidden, sandboxed `voice.html` window (private IPC in `src/shared/voiceIo.ts`, own session partition). The engine's Windows-speech `voice.*` events are ignored while this engine is active.
 
 - **1.2.0** (Kiro) — Additive: `Capability 'voiceTuning'` (UI hides sensitivity/timeout/rate rows when false).
   New Kiro-owned **desktop-services layer** (`src/main/desktop`, applied in `src/main/index.ts` to the real engine only). For each method it calls the engine first and only falls back when the engine throws `NOT_IMPLEMENTED`, so engine implementations take over automatically. It provides:
-  files (authorised roots, realpath containment), terminal (PowerShell, native confirmation per run, streaming, kill, 15-min limit), apps/integrations/VS Code/browser hand-off, foreground-window info, chat text attachments (inlined into the message), `chat.runAsTask`, `tasks.message` (starts a linked follow-up task), task/project hide-on-delete (engine records are kept; project folders only touched via Recycle Bin on explicit request), recurring automations (local scheduler that starts engine tasks), full notification policy (gates the engine's desktop popups, spoken announcements, Twilio calls, snooze), memory-in-task-context + retention, `allow_task` approvals (auto-approves later requests for that task), logs/data folders, and debranding of engine strings. On startup it tests the saved AI provider and discovers models.
+  files (authorised roots, realpath containment), terminal (PowerShell, native confirmation per run, streaming, kill, 15-min limit), apps/integrations/VS Code/browser hand-off, foreground-window info, chat text attachments (inlined into the message), `chat.runAsTask`, `tasks.message` (starts a linked follow-up task), task/project hide-on-delete (engine records are kept; project folders only touched via Recycle Bin on explicit request), recurring automations (local scheduler that starts engine tasks), full notification policy (gates the engine's desktop popups, spoken announcements, snooze), memory-in-task-context + retention, `allow_task` approvals (auto-approves later requests for that task), logs/data folders, and debranding of engine strings. On startup it tests the saved AI provider and discovers models.
   **Astra:** native implementations of any of these are welcome — they will be preferred automatically. `settings.update({voice})` is stored by the layer; only `speakResponses` and `wakeWordEnabled` are forwarded to the engine.
 
 - **1.1.0** (Kiro) — Additive: `SwarmConnection.endpointPresets?` so Settings → SWARM can offer a picker (e.g. `swarm://embedded/openrouter`, `…/groq`). Optional; free-text endpoint still works. Fixed `BackendContext` path in this doc.

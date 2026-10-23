@@ -166,7 +166,9 @@ export class PersonalWake {
   constructor(
     private readonly dir: string,
     /** Lower = stricter. ~10 separates the user's own samples from other phrases. */
-    private threshold = 10.2
+    private threshold = 10.2,
+    /** Which WAV files count as templates (default: all). */
+    private readonly accept: (file: string) => boolean = () => true
   ) {
     this.reload()
   }
@@ -182,7 +184,7 @@ export class PersonalWake {
   reload() {
     this.templates = []
     if (!existsSync(this.dir)) return
-    for (const f of readdirSync(this.dir).filter((x) => x.toLowerCase().endsWith('.wav')).sort()) {
+    for (const f of readdirSync(this.dir).filter((x) => x.toLowerCase().endsWith('.wav') && this.accept(x)).sort()) {
       try {
         const x = readWav16k(join(this.dir, f))
         const feat = x ? features(x) : []
@@ -193,6 +195,28 @@ export class PersonalWake {
     }
     const lens = this.templates.map((t) => t.length).sort((a, b) => a - b)
     this.medianLen = lens[Math.floor(lens.length / 2)] ?? 0
+    // How far the user's own samples are from each other (leave-one-out, best two): the natural
+    // variation of their "Hey Zvyra". Distances depend on mic and room, so limits scale with it.
+    this.spread = 0
+    if (this.templates.length >= 3) {
+      const own = this.templates.map((t, i) => {
+        const d = this.templates.filter((_, j) => j !== i).map((o) => dtw(t, o)).sort((a, b) => a - b)
+        return (d[0] + d[1]) / 2
+      })
+      this.spread = Math.max(...own)
+    }
+  }
+
+  private spread = 0
+
+  /**
+   * Distance limit calibrated on the user's own samples (0 when there are fewer
+   * than three). Sensitivity 0.6 allows ~14% more variation than the samples show.
+   */
+  calibratedLimit(sensitivity: number): number {
+    if (!this.spread) return 0
+    const s = Math.min(0.95, Math.max(0.05, sensitivity))
+    return Math.min(12, Math.max(4, this.spread * (1.05 + s * 0.15)))
   }
 
   get limit() {

@@ -37,7 +37,8 @@ describe('real UI facade and SQLite',()=>{
   it('boots with actual backend and reports absent providers honestly',async()=>{
     expect((await backend.invoke('system.info',undefined)).backend).toBe('SWARM embedded');
     expect((await backend.invoke('swarm.connection',undefined)).status).toBe('disconnected');
-    expect((await backend.invoke('calls.status',undefined)).configured).toBe(false);
+    expect((await backend.invoke('whatsappCalls.state',undefined)).autoCallEnabled).toBe(false);
+    expect((await backend.invoke('whatsappCalls.isActive',undefined))).toBe(false);
   });
   it('rejects unknown operations and unsafe filesystem input',async()=>{
     await expect(backend.invoke('terminal.run',{command:'echo no'})).rejects.toMatchObject({code:'NOT_IMPLEMENTED'});

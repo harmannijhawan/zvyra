@@ -13,10 +13,12 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { writeFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, mkdirSync, rmSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { POWERSHELL_EXE } from '../desktop/exec'
+import { NATIVE_INPUT } from '../computer/nativeInput'
+import { preparePath, type Point } from '../computer/paths'
 
 export interface WinInfo {
   hwnd: number
@@ -54,7 +56,9 @@ public static class ZvyraPc {
   public static List<string> List() {
     var o = new List<string>();
     EnumWindows((h, l) => {
-      if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero) return true;
+      // Owned windows include real application dialogs and some modern app
+      // surfaces. Excluding every owned HWND made these impossible to focus.
+      if (!IsWindowVisible(h)) return true;
       if ((GetWindowLong(h, -20) & 0x80) != 0) return true;
       int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true;
       var t = new StringBuilder(512); GetWindowText(h, t, 512); if (t.Length == 0) return true;
@@ -70,7 +74,9 @@ public static class ZvyraPc {
     SetForegroundWindow(h);
   }
 }
+${NATIVE_INPUT}
 "@
+try { [void][ZvyraInput]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch {}
 $names = @{}
 function ProcName([int]$id) { if (-not $names.ContainsKey($id)) { try { $names[$id] = (Get-Process -Id $id).ProcessName } catch { $names[$id] = '' } }; $names[$id] }
 while ($true) {
@@ -82,6 +88,23 @@ while ($true) {
     $id = $req.id
     $out = $null
     switch ($req.op) {
+      'metrics' {
+        $p = New-Object ZvyraInput+POINT; [void][ZvyraInput]::GetCursorPos([ref]$p)
+        $out = @{ x = [ZvyraInput]::GetSystemMetrics(76); y = [ZvyraInput]::GetSystemMetrics(77); width = [ZvyraInput]::GetSystemMetrics(78); height = [ZvyraInput]::GetSystemMetrics(79); cursor = @{ x = $p.x; y = $p.y }; hwnd = [ZvyraInput]::GetForegroundWindow().ToInt64() }
+      }
+      'move' { [ZvyraInput]::Move([double]$req.x, [double]$req.y); $out = $true }
+      'smoothMove' { $r = [ZvyraInput]::SmoothMove([double]$req.x,[double]$req.y,[string]$req.cancel,[int64]$req.hwnd); $out = @{elapsedMs=$r[0];samples=$r[1];endpoint=@{x=$r[2];y=$r[3]}} }
+      'click' { if ([int64]$req.hwnd -ne 0 -and [ZvyraInput]::GetForegroundWindow().ToInt64() -ne [int64]$req.hwnd) { throw 'Foreground window changed' }; [ZvyraInput]::Click([int]$req.x, [int]$req.y, [string]$req.button, [int]$req.count); $out = $true }
+      'scroll' { if ([ZvyraInput]::GetForegroundWindow().ToInt64() -ne [int64]$req.hwnd) { throw 'Foreground window changed' }; [ZvyraInput]::Mouse(0,0,0x800,(-120 * [int]$req.dy)); if ($req.dx) { [ZvyraInput]::Mouse(0,0,0x1000,(120 * [int]$req.dx)) }; $out = $true }
+      'text' { [ZvyraInput]::Text([string]$req.text,[string]$req.cancel,[int64]$req.hwnd); $out = $true }
+      'release' { [ZvyraInput]::Release(); $out = $true }
+      'resize' { $out = [ZvyraInput]::MoveWindow([IntPtr][int64]$req.hwnd,[int]$req.x,[int]$req.y,[int]$req.width,[int]$req.height,$true); if (-not $out) { throw 'Windows refused to resize the window' } }
+      'draw' {
+        $pts = New-Object 'double[][]' $req.points.Count
+        for ($n=0; $n -lt $req.points.Count; $n++) { $pts[$n] = [double[]]@($req.points[$n].x,$req.points[$n].y) }
+        $r = [ZvyraInput]::Draw($pts, [bool[]]$req.starts, [double]$req.speed, [double]$req.hz, [string]$req.cancel, [int64]$req.hwnd)
+        $out = @{ elapsedMs=$r[0]; sent=$r[1]; endpoint=@{x=$r[2];y=$r[3]} }
+      }
       'windows' {
         $names = @{}
         $out = @([ZvyraPc]::List() | ForEach-Object {
@@ -99,6 +122,7 @@ while ($true) {
       'minimizeAll' { (New-Object -ComObject Shell.Application).MinimizeAll(); $out = $true }
       'undoMinimizeAll' { (New-Object -ComObject Shell.Application).UndoMinimizeALL(); $out = $true }
       'keys' {
+        if ($req.hwnd -and [ZvyraInput]::GetForegroundWindow().ToInt64() -ne [int64]$req.hwnd) { throw 'Foreground window changed before shortcut' }
         $vks = @($req.vks | ForEach-Object { [byte]$_ })
         for ($n = 0; $n -lt [int]$req.times; $n++) {
           foreach ($k in $vks) { [ZvyraPc]::keybd_event($k, 0, 0, [UIntPtr]::Zero) }
@@ -186,7 +210,8 @@ const VK: Record<string, number> = {
   ctrl: 0x11, control: 0x11, shift: 0x10, alt: 0x12, win: 0x5b, windows: 0x5b, tab: 0x09, enter: 0x0d, return: 0x0d, esc: 0x1b, escape: 0x1b,
   space: 0x20, backspace: 0x08, delete: 0x2e, del: 0x2e, home: 0x24, end: 0x23, pageup: 0x21, pagedown: 0x22, up: 0x26, down: 0x28, left: 0x25,
   right: 0x27, insert: 0x2d, printscreen: 0x2c, f1: 0x70, f2: 0x71, f3: 0x72, f4: 0x73, f5: 0x74, f6: 0x75, f7: 0x76, f8: 0x77, f9: 0x78,
-  f10: 0x79, f11: 0x7a, f12: 0x7b, plus: 0xbb, minus: 0xbd, comma: 0xbc, period: 0xbe
+  f10: 0x79, f11: 0x7a, f12: 0x7b, plus: 0xbb, minus: 0xbd, comma: 0xbc, period: 0xbe,
+  add:0x6b,subtract:0x6d,multiply:0x6a,divide:0x6f,decimal:0x6e,equals:0xbb
 }
 
 /** "ctrl+shift+t" → virtual-key codes. Throws for unknown keys. */
@@ -207,6 +232,7 @@ export class PcControl {
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>()
   private buffer = ''
   private scriptPath: string | null = null
+  private cancellations = new Set<() => void>()
 
   private ensure() {
     if (this.child && this.child.exitCode === null && !this.child.killed) return this.child
@@ -214,7 +240,7 @@ export class PcControl {
     if (!this.scriptPath) {
       const dir = join(tmpdir(), 'zvyra-commands')
       mkdirSync(dir, { recursive: true })
-      this.scriptPath = join(dir, 'pc-control-host.ps1')
+      this.scriptPath = join(mkdtempSync(join(dir, 'pc-')), 'host.ps1')
       writeFileSync(this.scriptPath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(SCRIPT, 'utf8')]))
     }
     const child = spawn(POWERSHELL_EXE, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', this.scriptPath], { windowsHide: true })
@@ -239,7 +265,9 @@ export class PcControl {
       }
     })
     const fail = () => {
+      if (this.child !== child) return
       this.child = null
+      this.buffer = ''
       for (const [id, p] of this.pending) {
         clearTimeout(p.timer)
         p.reject(new Error('The PC control helper stopped'))
@@ -258,10 +286,11 @@ export class PcControl {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id)
+        this.dispose()
         reject(new Error('The PC didn’t respond in time'))
       }, timeoutMs)
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer })
-      child.stdin.write(JSON.stringify({ id, op, ...args }) + '\n')
+      child.stdin.write(JSON.stringify({ id, op, ...args }) + '\n', (err) => { if (err) { clearTimeout(timer); this.pending.delete(id); reject(err) } })
     })
   }
 
@@ -302,8 +331,8 @@ export class PcControl {
   undoMinimizeAll() {
     return this.ask('undoMinimizeAll')
   }
-  keys(combo: string, times = 1) {
-    return this.ask('keys', { vks: parseKeys(combo), times: Math.max(1, Math.min(20, Math.round(times))) })
+  keys(combo: string, times = 1, hwnd = 0) {
+    return this.ask('keys', { vks: parseKeys(combo), times: Math.max(1, Math.min(20, Math.round(times))), hwnd })
   }
   lock() {
     return this.ask('lock')
@@ -318,10 +347,52 @@ export class PcControl {
     return this.ask<number>('brightness', { value: Math.max(0, Math.min(100, Math.round(value))) })
   }
 
+  metrics() { return this.ask<{ x: number; y: number; width: number; height: number; cursor: Point; hwnd: number }>('metrics', {}, 30000) }
+  move(x: number, y: number) { return this.ask('move', { x, y }) }
+  smoothMove(x:number,y:number,hwnd:number,signal?:AbortSignal) {
+    if(!Number.isFinite(x)||!Number.isFinite(y))throw new Error('Mouse coordinates must be finite')
+    return this.cancellable<{elapsedMs:number;samples:number;endpoint:Point}>('smoothMove',{x,y,hwnd},signal)
+  }
+  click(x: number, y: number, button: 'left' | 'right' | 'middle' = 'left', count = 1, hwnd = 0) { return this.ask('click', { x, y, button, count, hwnd }) }
+  scroll(dy: number, dx: number, hwnd: number) { return this.ask('scroll', { dy, dx, hwnd }) }
+  resize(hwnd: number, x: number, y: number, width: number, height: number) { return this.ask('resize', { hwnd, x, y, width, height }) }
+  release() { return this.ask('release') }
+  private async cancellable<T>(op: string, args: Record<string, unknown>, signal?: AbortSignal, timeout = 30000): Promise<T> {
+    signal?.throwIfAborted()
+    this.ensure()
+    const cancel = join(this.scriptPath! + '-' + randomUUID() + '.cancel')
+    const stop = () => writeFileSync(cancel, '')
+    this.cancellations.add(stop)
+    signal?.addEventListener('abort', stop, { once: true })
+    try { const result = await this.ask<T>(op, { ...args, cancel }, timeout); signal?.throwIfAborted(); return result }
+    finally { signal?.removeEventListener('abort', stop); this.cancellations.delete(stop); rmSync(cancel, { force: true }) }
+  }
+  text(text: string, hwnd: number, signal?: AbortSignal) { return this.cancellable('text', { text, hwnd }, signal) }
+  async draw(strokes: Point[][], options: { speed?: number; precision?: number; hz?: number; hwnd: number; signal?: AbortSignal }) {
+    const speed = options.speed ?? 1800, hz = options.hz ?? 125
+    const path = preparePath(strokes, speed, options.precision ?? 0.6, hz)
+    const starts = path.strokes.flatMap(s => s.map((_, i) => i === 0))
+    const result = await this.cancellable<{ elapsedMs: number; sent: number; endpoint: Point }>('draw', { points: path.strokes.flat(), starts, speed, hz, hwnd: options.hwnd }, options.signal, 150000)
+    const end = path.strokes.at(-1)!.at(-1)!
+    const endpointError = Math.hypot(result.endpoint.x - end.x, result.endpoint.y - end.y)
+    if (endpointError > 2) throw new Error(`Cursor moved away from the stroke endpoint (${Math.round(endpointError)} px); drawing requires re-observation`)
+    return { ...result, inputPoints: path.inputPoints, outputPoints: path.outputPoints, length: path.length, pointsPerSecond: result.sent / Math.max(0.001, result.elapsedMs / 1000), endpointError }
+  }
+
+  stop() { for (const stop of this.cancellations) stop() }
+
   dispose() {
-    this.child?.kill()
-    this.child = null
+    this.stop()
+    const child = this.child
+    if (!child) return
+    // Do not terminate a thread with its mouse button down. Cancellation is checked
+    // every millisecond in the native path; queued release runs before stdin closes.
+    child.stdin.end(JSON.stringify({ id: randomUUID(), op: 'release' }) + '\n')
+    const watchdog = setTimeout(() => child.kill(), 1500)
+    watchdog.unref()
+    child.once('exit', () => clearTimeout(watchdog))
   }
 }
 
-export const pcControl = new PcControl()
+const registry = globalThis as typeof globalThis & { __zvyraPcControl?: PcControl }
+export const pcControl = registry.__zvyraPcControl ??= new PcControl()

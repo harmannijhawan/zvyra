@@ -169,8 +169,8 @@ function IslandSettings() {
       <SettingToggle label="Expand when I say the wake word" value={s.island.expandOnWake} onChange={(v) => void patchSettings({ island: { expandOnWake: v } })} />
       <SettingToggle
         label="Stay awake"
-        help="After the wake word, ZVYRA keeps the conversation and the island active until you say “go to sleep” or press stop. Turn off to fall asleep after a short silence. Audio is sent to Gemini while a conversation is active."
-        value={s.assistant?.stayAwake ?? true}
+        help="After the wake word, ZVYRA keeps the conversation open until you say “go to sleep” or press stop, and stays silent when people talk to each other or the TV is on (if the voice model supports it; otherwise it falls asleep after a short silence). Off is recommended in shared rooms. Audio is sent to Gemini while a conversation is active."
+        value={s.assistant?.stayAwake ?? false}
         onChange={(v) => void patchSettings({ assistant: { stayAwake: v } })}
       />
       <Row label="Position" help="Move the island back to the top centre of your main display.">

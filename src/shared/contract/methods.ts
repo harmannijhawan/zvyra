@@ -18,7 +18,6 @@ import type {
   Attachment,
   Automation,
   AutomationRun,
-  CallProviderStatus,
   CameraState,
   CommandRule,
   CommandShell,
@@ -64,7 +63,9 @@ import type {
   TaskStatus,
   TerminalRun,
   VoiceEngineOption,
-  VoiceStatus
+  VoiceStatus,
+  WhatsAppCallsState,
+  CallLine
 } from './types'
 
 type M<A, R> = { args: A; result: R }
@@ -242,11 +243,18 @@ export interface ZvyraMethods {
   'notifications.setPolicy': M<DeepPartial<NotificationPolicy>, NotificationPolicy>
   'notifications.snooze': M<{ minutes: number | null }, NotificationPolicy>
   'notifications.test': M<void, AppNotification>
-  'calls.status': M<void, CallProviderStatus>
-  'calls.configure': M<{ provider: string; values: Record<string, string | number | boolean> }, CallProviderStatus>
-  'calls.setEnabled': M<{ enabled: boolean; minPriority?: AppNotification['priority']; callWhenAway?: boolean; awayMinutes?: number }, CallProviderStatus>
-  /** Places a real test call. Rejects with NOT_CONFIGURED when no provider is set up. */
-  'calls.test': M<void, CallProviderStatus>
+
+  /* WhatsApp voice calls ---------------------------------------------- */
+  'whatsappCalls.state': M<void, WhatsAppCallsState>
+  'whatsappCalls.update': M<Partial<WhatsAppCallsState>, WhatsAppCallsState>
+  'whatsappCalls.checkReadiness': M<void, { ok: boolean; outputs: string[]; error?: string }>
+  'whatsappCalls.resolveContact': M<{ name: string }, { found: boolean; header?: string; error?: string }>
+  'whatsappCalls.startCall': M<{ contact: string; goal: string; joined?: boolean }, { called: boolean; error?: string }>
+  'whatsappCalls.endCall': M<void, void>
+  'whatsappCalls.getStatus': M<void, { state: string; contact: string | null; lines: CallLine[]; note: string }>
+  'whatsappCalls.handBack': M<void, boolean>
+  'whatsappCalls.takeOver': M<{ goal?: string }, boolean>
+  'whatsappCalls.isActive': M<void, boolean>
 
   /** Teach the wake word with the user's own voice: start = record the next 5 phrases; clear = forget them. */
   'voice.trainWake': M<{ action: 'start' | 'clear' }, { templates: number; recording: number }>
@@ -300,7 +308,10 @@ export const METHOD_NAMES = [
   'automations.runNow', 'automations.runs',
   'notifications.list', 'notifications.markRead', 'notifications.clear', 'notifications.policy', 'notifications.setPolicy',
   'notifications.snooze', 'notifications.test',
-  'calls.status', 'calls.configure', 'calls.setEnabled', 'calls.test', 'voice.trainWake',
+  'whatsappCalls.state', 'whatsappCalls.update', 'whatsappCalls.checkReadiness', 'whatsappCalls.resolveContact',
+  'whatsappCalls.startCall', 'whatsappCalls.endCall', 'whatsappCalls.getStatus', 'whatsappCalls.handBack',
+  'whatsappCalls.takeOver', 'whatsappCalls.isActive',
+  'voice.trainWake',
   'setup.state', 'setup.testKey', 'setup.demo', 'setup.complete',
   'camera.state', 'camera.frame', 'camera.close'
 ] as const satisfies readonly MethodName[]

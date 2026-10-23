@@ -48,7 +48,6 @@ export type Capability =
   | 'memory'
   | 'automations'
   | 'notifications'
-  | 'calls'
   | 'apps'
   | 'diagnostics'
   /** (1.2.0) Engine honours voice sensitivity, timeouts, rate and device settings. */
@@ -758,7 +757,7 @@ export interface AppNotification {
   category: NotificationCategory
   read: boolean
   taskId?: string
-  delivered: { desktop: boolean; spoken: boolean; call: boolean }
+  delivered: { desktop: boolean; spoken: boolean }
 }
 
 export interface NotificationPolicy {
@@ -772,20 +771,26 @@ export interface NotificationPolicy {
   snoozedUntil: ISODate | null
 }
 
-export interface CallProviderStatus {
-  provider: string | null
-  configured: boolean
-  enabled: boolean
-  /** Categories and minimum priority that may trigger a call. */
-  minPriority: NotificationPriority
-  destinationMasked?: string
-  fields: ConfigField[]
-  providers: { id: string; name: string }[]
-  lastCall?: { ts: ISODate; status: 'placed' | 'failed'; reference?: string; error?: string }
-  /** (1.5.0) Phone the user when a task finishes or fails while they are away. */
-  callWhenAway?: boolean
-  /** (1.5.0) Minutes without input (or a locked PC) that count as away. */
-  awayMinutes?: number
+/* ------------------------------------------------------------------ */
+/* WhatsApp voice calls                                                */
+/* ------------------------------------------------------------------ */
+
+export interface WhatsAppCallsState {
+  /** Preferred contact name or phone number for automatic calls (default: +91 9999653622). */
+  defaultContact: string
+  /** Enable automatic calls on task completion. */
+  autoCallEnabled: boolean
+  /** Minimum task priority that triggers a call. */
+  minPriority: 'low' | 'normal' | 'high' | 'critical'
+  /** Last notification sent to avoid duplicates. */
+  lastNotification?: { taskId: string; timestamp: string }
+  /** Verified contact identity for WhatsApp search. */
+  verifiedContact?: { name: string; header: string }
+}
+
+export interface CallLine {
+  who: 'them' | 'you'
+  text: string
 }
 
 /* ------------------------------------------------------------------ */

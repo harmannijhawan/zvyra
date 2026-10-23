@@ -146,19 +146,6 @@ export class IosBackend implements ZvyraBackend {
   private automations = new Map<string, Automation>()
   private notifications: AppNotification[] = []
   private policy: NotificationPolicy = DEFAULT_NOTIFICATION_POLICY
-  private calls: CallProviderStatus = {
-    provider: null,
-    configured: false,
-    enabled: false,
-    minPriority: 'critical',
-    providers: [{ id: 'twilio', name: 'Twilio Programmable Voice' }],
-    fields: [
-      { key: 'accountSid', label: 'Account SID', type: 'text', required: true, placeholder: 'AC…' },
-      { key: 'authToken', label: 'Auth token', type: 'secret', required: true, hasValue: false },
-      { key: 'from', label: 'From number', type: 'text', required: true, placeholder: '+1…' },
-      { key: 'to', label: 'Your number', type: 'text', required: true, placeholder: '+1…' }
-    ]
-  }
   private levelTimer: Timer | null = null
   private captureTimer: Timer | null = null
 
@@ -195,7 +182,7 @@ export class IosBackend implements ZvyraBackend {
   }
 
   private notify(title: string, body: string, priority: AppNotification['priority'], category: AppNotification['category'], taskId?: string) {
-    const n: AppNotification = { id: id(), ts: now(), title, body, priority, category, read: false, taskId, delivered: { desktop: false, spoken: false, call: false } }
+    const n: AppNotification = { id: id(), ts: now(), title, body, priority, category, read: false, taskId, delivered: { desktop: false, spoken: false } }
     this.notifications.unshift(n)
     this.emit('notification.new', n)
   }
@@ -563,7 +550,7 @@ export class IosBackend implements ZvyraBackend {
       capabilities: {
         voice: true, wakeWord: true, chat: true, chatStreaming: true, chatAttachments: false, tasks: true, taskPause: true,
         agents: true, computerControl: false, terminal: false, files: false, browser: false, codeEditor: false, projects: true,
-        memory: true, automations: true, notifications: true, calls: false, apps: false, diagnostics: true
+        memory: true, automations: true, notifications: true, apps: false, diagnostics: true
       }
     }),
     'system.diagnostics': () => [
@@ -848,8 +835,7 @@ export class IosBackend implements ZvyraBackend {
       { id: 'vscode', name: 'Visual Studio Code', category: 'editor', status: 'needs_setup', detail: 'Detected by the real backend' },
       { id: 'browser', name: 'Default browser', category: 'browser', status: 'needs_setup', detail: 'Detected by the real backend' },
       { id: 'terminal', name: 'Windows Terminal / PowerShell', category: 'terminal', status: 'needs_setup', detail: 'Detected by the real backend' },
-      { id: 'explorer', name: 'File Explorer', category: 'files', status: 'needs_setup', detail: 'Detected by the real backend' },
-      { id: 'twilio', name: 'Twilio (calls)', category: 'communication', status: 'needs_setup', setupHint: 'Settings → Calls' }
+      { id: 'explorer', name: 'File Explorer', category: 'files', status: 'needs_setup', detail: 'Detected by the real backend' }
     ],
     'apps.launchable': () => [],
     'apps.launch': () => unavailable('App launching'),
@@ -994,10 +980,19 @@ export class IosBackend implements ZvyraBackend {
       this.notify('Test notification (preview)', 'Desktop delivery is handled by the real backend.', 'normal', 'custom')
       return this.notifications[0]
     },
-    'calls.status': () => this.calls,
-    'calls.configure': () => unavailable('Calling'),
-    'calls.setEnabled': () => unavailable('Calling'),
-    'calls.test': () => unavailable('Calling'),
+    'whatsappCalls.state': () => ({ defaultContact: 'Rachna', autoCallEnabled: false, minPriority: 'high' }),
+    'whatsappCalls.update': (a) => {
+      const cur = { defaultContact: '+91 9999653622', autoCallEnabled: false, minPriority: 'high' }
+      return { ...cur, ...a }
+    },
+    'whatsappCalls.checkReadiness': () => ({ ok: false, outputs: [], error: 'WhatsApp calls require the desktop backend.' }),
+    'whatsappCalls.resolveContact': () => ({ found: false, error: 'Contact search requires the desktop backend.' }),
+    'whatsappCalls.startCall': () => ({ called: false, error: 'WhatsApp calls require the desktop backend.' }),
+    'whatsappCalls.endCall': () => undefined,
+    'whatsappCalls.getStatus': () => ({ state: 'idle', contact: null, lines: [], note: '' }),
+    'whatsappCalls.handBack': () => false,
+    'whatsappCalls.takeOver': () => false,
+    'whatsappCalls.isActive': () => false,
     'voice.trainWake': ({ action }) => {
       if (action === 'clear') return { templates: 0, recording: 0 }
       for (let i = 1; i <= 5; i++) setTimeout(() => this.emit('voice.wakeTraining', { recording: 5 - i, templates: i }), i * 900)

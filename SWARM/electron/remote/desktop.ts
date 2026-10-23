@@ -21,6 +21,8 @@ export async function getNutJs() {
 }
 
 export interface DesktopFrame {
+  displayId?: number;
+  bounds?: Electron.Rectangle;
   image: Buffer; // JPEG encoded
   width: number;
   height: number;
@@ -93,15 +95,17 @@ export class DesktopCapture {
   onError(callback: (error: Error) => void): () => void { this.errors.add(callback); return () => this.errors.delete(callback); }
 
   /** A fresh observation, also used by agents. Coordinates always refer to the actual image size. */
-  async screenshot(maxWidth = 1600, maxHeight = 1000): Promise<DesktopFrame> {
+  async screenshot(maxWidth = 1600, maxHeight = 1000, displayId = screen.getPrimaryDisplay().id): Promise<DesktopFrame> {
+    const display = screen.getAllDisplays().find(d => d.id === displayId);
+    if (!display) throw new Error('Display disconnected; observe another monitor.');
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: maxWidth, height: maxHeight } });
-    const source = sources.find(s => s.display_id === String(screen.getPrimaryDisplay().id)) ?? sources[0];
+    const source = sources.find(s => s.display_id === String(displayId));
     if (!source || source.thumbnail.isEmpty()) throw new Error('The desktop could not be captured. Check the interactive Windows session.');
     const size = source.thumbnail.getSize();
     const scale = Math.min(1, maxWidth / size.width, maxHeight / size.height);
     const image = scale < 1 ? source.thumbnail.resize({ width: Math.round(size.width * scale), height: Math.round(size.height * scale) }) : source.thumbnail;
     const actual = image.getSize();
-    return { image: image.toJPEG(75), width: actual.width, height: actual.height, sequence: 0, timestamp: Date.now() };
+    return { image: image.toJPEG(75), width: actual.width, height: actual.height, sequence: 0, timestamp: Date.now(), displayId, bounds: { ...display.bounds } };
   }
   private options: StreamOptions = {
     quality: 'auto',
@@ -282,16 +286,22 @@ export class DesktopCapture {
 }
 
 export class InputInjector {
+  private generation = 0;
+  private queued = 0;
   private heldButtons = new Set<any>();
   async releaseAll(): Promise<void> {
+    this.generation++;
     if (!this.heldButtons.size) return;
     const nut = await getNutJs();
     for (const button of this.heldButtons) await nut.mouse.releaseButton(button);
     this.heldButtons.clear();
   }
   private queue: Promise<unknown> = Promise.resolve();
-  inject(event: InputEvent): Promise<boolean> {
-    const result = this.queue.then(() => this.injectOrdered(event));
+  inject(event: InputEvent, signal?: AbortSignal): Promise<boolean> {
+    if (this.queued >= 32) return Promise.resolve(false);
+    const generation = this.generation;
+    this.queued++;
+    const result = this.queue.then(() => generation === this.generation && !signal?.aborted ? this.injectOrdered(event, signal) : false).finally(() => { this.queued--; });
     this.queue = result.catch(() => false);
     return result;
   }
@@ -303,7 +313,7 @@ export class InputInjector {
   getLastMousePosition() { return this.lastMousePos; }
 
   /** Rate-limited input injection - returns false if rate limit exceeded */
-  private async injectOrdered(event: InputEvent): Promise<boolean> {
+  private async injectOrdered(event: InputEvent, signal?: AbortSignal): Promise<boolean> {
     // Rate limiting
     const now = Date.now();
     if (now - this.lastInputTime > this.rateLimitWindow) {
@@ -319,6 +329,7 @@ export class InputInjector {
 
     try {
       const nut = await getNutJs();
+      signal?.throwIfAborted();
       const { mouse, keyboard, Point, Button, Key } = nut;
 
       switch (event.type) {
@@ -399,6 +410,7 @@ export class InputInjector {
               }
               
               // Press main key
+              signal?.throwIfAborted();
               await keyboard.type(nutKey);
               } finally {
               // Release modifiers

@@ -23,6 +23,7 @@ import type { Run, AgentRole, SwarmEvent, ApprovalRequest } from '../../SWARM/sh
 import type { Conversation, ChatTurn } from '../../SWARM/shared/chat';
 import type { Automation } from './store';
 import * as map from './ui-mapping';
+import { pcControl } from '../../SWARM/electron/computer/service';
 
 const id = z.string().min(1).max(128), text = z.string().trim().min(1).max(100000);
 const obj = z.object({}).strict();
@@ -53,6 +54,7 @@ export async function createUiBackend(ctx: BackendContext): Promise<ZvyraBackend
     if (event.topic === 'approvals:changed') { const current = new Set<string>((p as ApprovalRequest[]).map(a=>a.id)); for (const a of p as ApprovalRequest[]) if(!previousApprovals.has(a.id)) emit({type:'permission.requested',payload:map.permission(a)}); for(const id of previousApprovals) if(!current.has(id)) emit({type:'permission.resolved',payload:{id,decision:'expired'}}); previousApprovals=current; }
     if (event.topic === 'notification') emit({type:'notification.new',payload:map.notification(p)});
     if (event.topic === 'voice.state' && backend) emit({type:'voice.status',payload:voice()});
+    if (event.topic === 'computer:activity' && backend) emit({type:'computer.status',payload:{...computer(),phase:p.controlling?'executing':'idle'}});
     if (event.topic === 'voice.transcript') emit({type:'voice.transcript',payload:{text:p.text,final:true}});
     if (event.topic === 'models:changed' && backend) emit({type:'swarm.connection',payload:connection()});
     if (event.topic === 'automation.changed') emit({type:'automation.upsert',payload:automation(p)});
@@ -88,9 +90,9 @@ export async function createUiBackend(ctx: BackendContext): Promise<ZvyraBackend
   const selectedFolders = new Set<string>();
   const handlers: Record<string,{schema:z.ZodType;run:(p:any)=>unknown}> = {};
   function add<K extends MethodName>(name:K,schema:z.ZodType,run:(p:any)=>MethodResult<K>|Promise<MethodResult<K>>) {handlers[name]={schema,run};}
-  add('system.info',obj,()=>({contractVersion:CONTRACT_VERSION,backend:'SWARM embedded',backendVersion:'1.0.6 + ZVYRA 0.1',appVersion:ctx.appVersion,platform:process.platform,dataPath:ctx.userDataPath,capabilities:{chat:true,chatStreaming:true,tasks:true,taskPause:true,agents:true,projects:true,memory:true,automations:true,notifications:true,diagnostics:true,voice:voice().stt.ready,wakeWord:voice().wake.ready,computerControl:process.platform==='win32'||process.platform==='darwin',calls:false,files:false,terminal:false,browser:false,apps:false}}));
+  add('system.info',obj,()=>({contractVersion:CONTRACT_VERSION,backend:'SWARM embedded',backendVersion:'1.0.6 + ZVYRA 0.1',appVersion:ctx.appVersion,platform:process.platform,dataPath:ctx.userDataPath,capabilities:{chat:true,chatStreaming:true,tasks:true,taskPause:true,agents:true,projects:true,memory:true,automations:true,notifications:true,diagnostics:true,voice:voice().stt.ready,wakeWord:voice().wake.ready,computerControl:process.platform==='win32'||process.platform==='darwin',files:false,terminal:false,browser:false,apps:false}}));
   add('system.diagnostics',obj,()=>[{id:'sqlite',label:'SQLite',status:'ok',detail:'Persistent database initialized'},{id:'swarm',label:'SWARM providers',status:connection().status==='connected'?'ok':'warning',detail:connection().error,fixRoute:'settings/swarm'},{id:'voice',label:VOICE_IS_MAC?'macOS speech':'Windows speech',status:voice().stt.ready?'ok':'warning',detail:voice().stt.setupRequired}]);
-  add('system.stopAll',obj,()=>{const count=listActiveRuns().length;cancelAll();stopAllChats();backend.service.close();return {cancelledTasks:count};});
+  add('system.stopAll',obj,async()=>{const count=listActiveRuns().length;cancelAll();stopAllChats();await pcControl.releaseInput();backend.service.close();return {cancelledTasks:count};});
   add('system.logs',z.object({limit,level:z.enum(['debug','info','warn','error']).optional(),query:z.string().max(500).optional()}),p=>queryEvents({limit:p.limit??200}).filter(e=>!p.query||e.message.includes(p.query)).map(e=>({ts:map.iso(e.ts),level:e.level==='warning'?'warn':e.level==='success'?'info':e.level,scope:e.type,message:redact(e.message)})));
   add('settings.get',obj,settings);
   add('settings.update',z.record(z.string(),z.unknown()),p=>{
@@ -143,7 +145,7 @@ export async function createUiBackend(ctx: BackendContext): Promise<ZvyraBackend
   add('agents.runtime',obj,()=>({mode:getSettings().behavior.parallel?'parallel':'sequential',maxConcurrentTasks:getSettings().agents.maxConcurrent,runningTasks:listActiveRuns().flatMap(r=>runSnapshot(r.id)?.tasks??[]).filter(t=>t.status==='running').length,queuedTasks:listActiveRuns().flatMap(r=>runSnapshot(r.id)?.tasks??[]).filter(t=>['waiting','ready'].includes(t.status)).length}));
   for(const method of ['agents.setEnabled','agents.setModel'] as const)add(method,z.object({id,enabled:z.boolean().optional(),model:id.nullable().optional()}),p=>{if(!Object.hasOwn(ROLES,p.id))throw new ZvyraError('NOT_FOUND','Agent not found');ensureModel(p.model);updateSettings({agents:method==='agents.setEnabled'?{enabled:{[p.id]:z.boolean().parse(p.enabled)}}:{modelPreference:{[p.id]:p.model??null}}});const agent=agents().find(a=>a.id===p.id)!;emit({type:'agents.update',payload:agent});return agent;});
   add('agents.stop',idArg,p=>{if(!Object.hasOwn(ROLES,p.id))throw new ZvyraError('NOT_FOUND','Agent not found');for(const r of listActiveRuns())controlAgent(r.id,p.id as AgentRole,'stop');return agents().find(a=>a.id===p.id)!;});
-  const computer=():UI.ComputerStatus=>({enabled:getSettings().computer.native,available:process.platform==='win32'||process.platform==='darwin',adapter:'SWARM PcControlService / nut-js',phase:'idle',capabilities:{screenCapture:true,mouse:true,keyboard:true,windowInfo:true,appLaunch:true}});
+  const computer=():UI.ComputerStatus=>({enabled:getSettings().computer.native,available:process.platform==='win32'||process.platform==='darwin',adapter:'Windows UI Automation / native input / SWARM',phase:pcControl.controlling?'executing':'idle',capabilities:{screenCapture:true,mouse:true,keyboard:true,windowInfo:true,appLaunch:true}});
   add('computer.status',obj,computer);add('computer.setEnabled',z.object({enabled:z.boolean()}),async p=>{await call('computer.permission',p);emit({type:'computer.status',payload:computer()});return computer();});
   add('computer.stop',obj,async()=>{await call('computer.permission',{enabled:false});cancelAll();stopAllChats();return computer();});
   add('computer.capture',obj,async()=>{const id=randomUUID(),r=await call('computer.execute',{id,action:{action:'screenshot'}});return {id,ts:map.iso(Date.now()),dataUrl:r.image,width:r.width,height:r.height};});
@@ -176,10 +178,11 @@ export async function createUiBackend(ctx: BackendContext): Promise<ZvyraBackend
   add('notifications.policy',obj,()=>{const p=backend.service.preferences();return {...DEFAULT_NOTIFICATION_POLICY,doNotDisturb:p.doNotDisturb,quietHours:{enabled:p.quietHours,start:`${String(p.quietStart).padStart(2,'0')}:00`,end:`${String(p.quietEnd).padStart(2,'0')}:00`,allowCritical:false}};});
   add('notifications.setPolicy',z.object({doNotDisturb:z.boolean().optional(),quietHours:z.object({enabled:z.boolean(),start:z.string().regex(/^([01]\d|2[0-3]):00$/),end:z.string().regex(/^([01]\d|2[0-3]):00$/),allowCritical:z.literal(false).optional()}).optional()}).strict(),async p=>{await call('preferences.update',{...(p.doNotDisturb!==undefined?{doNotDisturb:p.doNotDisturb}:{}),...(p.quietHours?{quietHours:p.quietHours.enabled,quietStart:Number(p.quietHours.start.slice(0,2)),quietEnd:Number(p.quietHours.end.slice(0,2))}:{})});return handlers['notifications.policy'].run({}) as UI.NotificationPolicy;});
   add('notifications.test',obj,()=>{notify('info','info','Notification test','ZVYRA notification pipeline is working');return map.notification(listNotifications()[0]);});
-  add('calls.status',obj,()=>({provider:null,configured:false,enabled:false,minPriority:'high',fields:[],providers:[]}));
+  add('whatsappCalls.state',obj,()=>({defaultContact:'',autoCallEnabled:false,minPriority:'high'}));
+  add('whatsappCalls.isActive',obj,()=>false);
   return {
     async invoke<K extends MethodName>(method:K,args:MethodArgs<K>):Promise<MethodResult<K>> {
-      if(!Object.hasOwn(handlers,method))throw new ZvyraError(method.startsWith('calls.')?'NOT_CONFIGURED':'NOT_IMPLEMENTED',`Not available in this backend: ${method}`);
+      if(!Object.hasOwn(handlers,method))throw new ZvyraError(method.startsWith('whatsappCalls.')?'NOT_CONFIGURED':'NOT_IMPLEMENTED',`Not available in this backend: ${method}`);
       try {const input=handlers[method].schema.parse(args??{});return await handlers[method].run(input) as MethodResult<K>;}
       catch(e){if(e instanceof ZvyraError)throw e;if(e instanceof z.ZodError)throw new ZvyraError('INVALID_ARGS','Request is unsupported or has invalid fields');throw new ZvyraError('BACKEND_ERROR',redact(e instanceof Error?e.message:String(e)));}
     },

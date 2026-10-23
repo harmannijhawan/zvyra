@@ -145,6 +145,42 @@ export async function bing(query: string, max = 8, signal?: AbortSignal): Promis
   return hits
 }
 
+/**
+ * Brave Search: the official API when BRAVE_SEARCH_API_KEY is set, otherwise
+ * the public results page (one request per query, no retries). Used when the
+ * other keyless engines serve a challenge page or unrelated results.
+ */
+export async function brave(query: string, max = 8, signal?: AbortSignal): Promise<WebHit[]> {
+  const t = () => (signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000))
+  const key = process.env['BRAVE_SEARCH_API_KEY']
+  if (key) {
+    const r = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${Math.min(20, max)}`, { headers: { Accept: 'application/json', 'X-Subscription-Token': key }, signal: t() })
+    if (!r.ok) throw new Error(`Brave Search API answered ${r.status}`)
+    const j = (await r.json()) as { web?: { results?: { title?: string; url?: string; description?: string }[] } }
+    return (j.web?.results ?? []).filter((x) => x.url && /^https?:\/\//.test(x.url)).slice(0, max).map((x) => ({ title: decodeEntities(x.title ?? ''), snippet: decodeEntities((x.description ?? '').replace(/<[^>]+>/g, '')), url: x.url!, source: 'brave' }))
+  }
+  const r = await fetch(`https://search.brave.com/search?q=${encodeURIComponent(query)}`, { headers: { 'User-Agent': UA, Accept: 'text/html' }, signal: t() })
+  if (!r.ok) throw new Error(`Brave Search answered ${r.status}`)
+  return parseBraveHtml(await r.text(), max)
+}
+
+/** Organic results from a Brave results page (exported for tests). */
+export function parseBraveHtml(html: string, max = 8): WebHit[] {
+  const root = parse(html)
+  const hits: WebHit[] = []
+  for (const el of root.querySelectorAll('[data-type="web"]')) {
+    const a = el.querySelector('a[href^="http"]')
+    const href = a?.getAttribute('href') ?? ''
+    if (!a || !/^https?:\/\//.test(href) || /(^|\.)brave\.com\//.test(href.replace(/^https?:\/\//, ''))) continue
+    const title = el.querySelector('.title')?.getAttribute('title') ?? el.querySelector('.title')?.text ?? a.text
+    const snippet = [el.querySelector('.generic-snippet')?.text ?? el.querySelector('.snippet-description')?.text ?? '', ...el.querySelectorAll('.item-attributes .attr').map((x) => x.text)].join(' ')
+    if (hits.some((h) => h.url === href)) continue
+    hits.push({ title: decodeEntities(title.replace(/\s+/g, ' ').trim()), snippet: decodeEntities(snippet.replace(/\s+/g, ' ').trim()).slice(0, 500), url: href, source: 'brave' })
+    if (hits.length >= max) break
+  }
+  return hits
+}
+
 export async function googleNews(query: string, max = 8, signal?: AbortSignal): Promise<WebHit[]> {
   const url = query.trim() ? `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en` : 'https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en'
   const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000) })
@@ -270,7 +306,10 @@ async function keylessHits(q: string, max: number, signal?: AbortSignal): Promis
   // Short queries need every key word; longer ones most of them.
   const need = terms(q).length <= 2 ? 1 : 0.6
   const ok = (h: WebHit) => relevance(q, h) >= need
-  return dedupeHits([...web.filter(ok), ...news.filter(ok), ...wiki.filter(ok)]).slice(0, max)
+  // DuckDuckGo/Bing often answer automated requests with a challenge or unrelated results.
+  const relevantWeb = web.filter(ok)
+  const extra = relevantWeb.length >= 3 ? [] : (await brave(q, max, signal).catch(() => [] as WebHit[])).filter(ok)
+  return dedupeHits([...relevantWeb, ...extra, ...news.filter(ok), ...wiki.filter(ok)]).slice(0, max)
 }
 
 async function synthesize(key: string, request: string, hits: WebHit[], excerpts: string[], signal?: AbortSignal) {

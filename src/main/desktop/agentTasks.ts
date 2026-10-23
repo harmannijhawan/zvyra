@@ -69,10 +69,32 @@ export class AgentTasks {
     return t
   }
 
+  /** Tasks whose plan was declared by the agent (update_plan): tool calls then don't become plan steps. */
+  private declared = new Set<string>()
+
+  /** The agent's own step-by-step plan (replaces the plan; ids are kept per title). */
+  setPlan(id: string, steps: { title: string; status: string }[]) {
+    const t = this.get(id)
+    if (!t || t.status !== 'running') return
+    const valid = new Set(['pending', 'running', 'done', 'failed', 'skipped'])
+    const plan: TaskStep[] = steps
+      .filter((s) => s && typeof s.title === 'string' && s.title.trim())
+      .slice(0, MAX_STEPS)
+      .map((s) => ({ id: t.plan.find((p) => p.title === s.title.trim())?.id ?? randomUUID(), title: s.title.trim().slice(0, 140), status: (valid.has(s.status) ? s.status : 'pending') as TaskStep['status'] }))
+    if (!this.declared.has(id)) this.event(id, 'status', `Plan: ${plan.map((p) => p.title).join(' → ')}`.slice(0, 500))
+    this.declared.add(id)
+    this.save({ ...t, plan, currentAction: plan.find((p) => p.status === 'running')?.title ?? t.currentAction })
+  }
+
   /** A new step started (previous one is done). */
   step(id: string, action: string) {
     const t = this.get(id)
     if (!t || t.status !== 'running') return
+    if (this.declared.has(id)) {
+      this.save({ ...t, currentAction: action })
+      this.event(id, 'tool_call', action)
+      return
+    }
     const plan: TaskStep[] = t.plan.map((s) => (s.status === 'running' ? { ...s, status: /— failed$/.test(s.title) ? 'failed' : 'done' } : s))
     plan.push({ id: randomUUID(), title: action, status: 'running' })
     this.save({ ...t, plan: plan.slice(-MAX_STEPS), currentAction: action })
@@ -91,7 +113,9 @@ export class AgentTasks {
     this.controllers.delete(id)
     const now = new Date().toISOString()
     const stepStatus = outcome.status === 'completed' ? 'done' : outcome.status === 'cancelled' ? 'skipped' : 'failed'
-    const plan = t.plan.map((s) => (s.status === 'running' || s.status === 'pending' ? { ...s, status: stepStatus as TaskStep['status'] } : s))
+    // Steps that never started are reported as skipped, not as done.
+    const plan = t.plan.map((s) => (s.status === 'running' ? { ...s, status: stepStatus as TaskStep['status'] } : s.status === 'pending' ? { ...s, status: (outcome.status === 'failed' ? 'pending' : 'skipped') as TaskStep['status'] } : s))
+    this.declared.delete(id)
     const output = outcome.files?.length ? `Files:\n${outcome.files.join('\n')}` : undefined
     this.save({ ...t, status: outcome.status, plan, summary: outcome.summary, error: outcome.error, output, currentAction: undefined, finishedAt: now, canRetry: outcome.status !== 'completed' })
     this.event(id, outcome.status === 'failed' ? 'error' : 'status', outcome.status === 'completed' ? 'Completed' : outcome.status === 'cancelled' ? 'Cancelled' : `Failed: ${outcome.error ?? ''}`.trim())

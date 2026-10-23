@@ -1,7 +1,7 @@
 {
   "name": "zvyra",
   "productName": "ZVYRA",
-  "version": "0.3.1",
+  "version": "0.3.4",
   "description": "ZVYRA - your AI operating system. Windows-first personal AI agent with a persistent Dynamic Island.",
   "private": true,
   "author": "ZVYRA",
@@ -23,6 +23,7 @@
     "@google/genai": "2.30.0",
     "@nut-tree-fork/nut-js": "4.2.6",
     "@runonflux/nat-upnp": "1.0.2",
+    "@vercel/analytics": "^2.0.1",
     "diff": "9.0.0",
     "node-html-parser": "9.0.4",
     "playwright-core": "1.63.0",

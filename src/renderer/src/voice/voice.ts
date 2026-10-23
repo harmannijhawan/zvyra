@@ -13,6 +13,10 @@ interface VoiceBridge {
 const io = (window as unknown as { zvyraVoice?: VoiceBridge }).zvyraVoice
 if (!io) throw new Error('voice bridge unavailable')
 
+/** voice.html#call: the call window. Captures what the PC plays (the other person on a WhatsApp call)
+ *  and plays ZVYRA's voice into a chosen output (a virtual cable that WhatsApp uses as its microphone). */
+const CALL = location.hash === '#call'
+
 /* ---------------------------------------------------------------- capture */
 
 // AudioWorklet: averages input down to 16 kHz and posts 100 ms PCM16 frames.
@@ -51,15 +55,17 @@ let capture: { ctx: AudioContext; stream: MediaStream; node: AudioWorkletNode } 
 async function startCapture(deviceId: string | null) {
   await stopCapture()
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: deviceId ? { exact: deviceId } : undefined,
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    })
+    const stream = CALL
+      ? await loopbackStream()
+      : await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        })
     const ctx = new AudioContext({ latencyHint: 'interactive' })
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }))
     await ctx.audioWorklet.addModule(url)
@@ -87,6 +93,69 @@ async function startCapture(deviceId: string | null) {
           ? 'No microphone found. Plug one in or choose another device.'
           : `Microphone error: ${e?.message ?? String(err)}`
     })
+  }
+}
+
+/** System audio (WASAPI loopback, granted by the main process); the video track is dropped at once. */
+async function loopbackStream(): Promise<MediaStream> {
+  const s = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
+  for (const v of s.getVideoTracks()) {
+    v.stop()
+    s.removeTrack(v)
+  }
+  if (!s.getAudioTracks().length) throw new Error('System audio capture is not available')
+  return s
+}
+
+/** The user's own microphone routed into the call output (for "let me talk"). */
+let pass: { stream: MediaStream; ctx: AudioContext } | null = null
+/** Output device chosen for the call (the cable); the passthrough plays into the same device. */
+let sinkId = ''
+
+async function passthrough(micLabel: string | null) {
+  if (pass) {
+    pass.stream.getTracks().forEach((t) => t.stop())
+    void pass.ctx.close()
+    pass = null
+  }
+  if (micLabel === null) {
+    io!.sendEvent({ type: 'passthrough', ok: true })
+    return
+  }
+  try {
+    const mics = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && !/CABLE/i.test(d.label) && !/^(default|communications)$/.test(d.deviceId))
+    const want = micLabel.toLowerCase()
+    const mic = mics.find((d) => d.label.toLowerCase().includes(want) || want.includes(d.label.toLowerCase().replace(/\s*\(.*$/, ''))) ?? mics[0]
+    if (!mic) throw new Error('No microphone found')
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: mic.deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+    // Its own context at the mic's native rate (mixing sample rates across contexts isn't allowed).
+    const ctx = new AudioContext({ latencyHint: 'interactive' }) as AudioContext & { setSinkId?: (id: string) => Promise<void> }
+    if (sinkId && ctx.setSinkId) await ctx.setSinkId(sinkId)
+    ctx.createMediaStreamSource(stream).connect(ctx.destination)
+    pass = { stream, ctx }
+    io!.sendEvent({ type: 'passthrough', ok: true, label: mic.label })
+  } catch (err) {
+    io!.sendEvent({ type: 'passthrough', ok: false, error: String((err as Error)?.message ?? err) })
+  }
+}
+
+async function chooseSink(label: string | null) {
+  try {
+    // Device labels are only visible after an audio permission grant.
+    const probe = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null)
+    probe?.getTracks().forEach((t) => t.stop())
+    const outs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput')
+    const pick = label ? outs.find((d) => d.label.toLowerCase().includes(label.toLowerCase())) : undefined
+    const sinkable = out as AudioContext & { setSinkId?: (id: string) => Promise<void> }
+    if (label && (!pick || !sinkable.setSinkId)) {
+      io!.sendEvent({ type: 'sink', ok: false, outputs: outs.map((d) => d.label) })
+      return
+    }
+    if (sinkable.setSinkId) await sinkable.setSinkId(pick ? pick.deviceId : '')
+    sinkId = pick ? pick.deviceId : ''
+    io!.sendEvent({ type: 'sink', ok: true, label: pick?.label ?? 'default', outputs: outs.map((d) => d.label) })
+  } catch (err) {
+    io!.sendEvent({ type: 'sink', ok: false, outputs: [], label: String((err as Error)?.message ?? err) })
   }
 }
 
@@ -195,6 +264,7 @@ function stopLevels() {
 
 /** Short, soft two-tone chime generated locally. */
 function chime(kind: 'wake' | 'sleep' | 'error') {
+  if (CALL) return // never beep into a phone call
   if (out.state === 'suspended') void out.resume()
   const tones = kind === 'wake' ? [660, 990] : kind === 'sleep' ? [880, 587] : [330, 262]
   const t0 = out.currentTime + 0.01
@@ -234,6 +304,12 @@ io.onCommand((c) => {
       break
     case 'enumerate':
       void enumerate()
+      break
+    case 'sink':
+      void chooseSink(c.label)
+      break
+    case 'passthrough':
+      void passthrough(c.micLabel)
       break
   }
 })

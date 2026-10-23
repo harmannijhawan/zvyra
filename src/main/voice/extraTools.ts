@@ -16,8 +16,13 @@ import { weather } from '../tools/weather'
 import { systemStatus } from '../tools/system'
 import { captureScreen, describeScreen, planGuide } from '../tools/screenVision'
 import { closeGuide, showGuide } from '../tools/screenGuide'
+import { OPERATOR_TOOL_DECLARATIONS, runOperatorTool, UNTRUSTED, type OperatorHost } from './operatorTools'
+import { COMPUTER_DECLARATIONS, runComputerTool } from './computerTools'
+import { desktopInput } from '../computer/inputQueue'
 
-export interface ToolHost extends DesktopToolHost {
+export interface ToolHost extends DesktopToolHost, OperatorHost {
+  computerSnapshots?: boolean
+  computerEnabled?(): Promise<boolean>
   geminiKey(): string | null
   toolActivity(a: ToolActivity): void
   notify(title: string, body: string): void
@@ -27,8 +32,7 @@ export interface ToolHost extends DesktopToolHost {
     /** Opens the island preview if needed and resolves with a JPEG data URL. */
     capture(): Promise<string>
   }
-  /** Places a real phone call to the user's number (throws when calls aren't set up). */
-  callUser(message: string): Promise<string>
+  startWhatsAppCall(contact: string, goal: string): Promise<{ called: boolean; error?: string }>
 }
 
 /* ---------------------------------------------------------------- declarations */
@@ -130,8 +134,7 @@ export const EXTRA_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'call_me',
-    description:
-      'Phone the user (their number from setup) and speak a message, e.g. when they say "call me", "call me when it’s done" (for a build, pass call_when_done to run_task instead), or something urgent needs them. Keep the message short and clear.',
+    description: 'Call the user on WhatsApp and speak a message. Use when the user says "call me", "call my phone", or when you need to urgently notify them. The user\'s number is saved automatically; just pass the message to speak.',
     parameters: { type: Type.OBJECT, properties: { message: { type: Type.STRING } }, required: ['message'] }
   },
   {
@@ -141,7 +144,7 @@ export const EXTRA_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   }
 ]
 
-export const ALL_TOOL_DECLARATIONS: FunctionDeclaration[] = [...DESKTOP_TOOL_DECLARATIONS, ...EXTRA_TOOL_DECLARATIONS]
+export const ALL_TOOL_DECLARATIONS: FunctionDeclaration[] = [...DESKTOP_TOOL_DECLARATIONS, ...EXTRA_TOOL_DECLARATIONS, ...OPERATOR_TOOL_DECLARATIONS, ...COMPUTER_DECLARATIONS]
 
 /* ---------------------------------------------------------------- timers */
 
@@ -188,7 +191,6 @@ const DONE_LABEL: Record<string, string> = {
   'Looking through the camera': 'What I see',
   'Looking at your screen': 'On your screen',
   'Drawing the steps': 'Follow the arrows',
-  'Calling you': 'Call placed',
   'PC status': 'PC status',
   Timer: 'Timer started'
 }
@@ -196,6 +198,7 @@ const DONE_LABEL: Record<string, string> = {
 function describe(name: string, args: Record<string, unknown>): { kind: ToolKind; label: string; subject?: string } | null {
   const s = (k: string) => (typeof args[k] === 'string' ? (args[k] as string).trim() : '')
   switch (name) {
+    case 'computer': return { kind: 'system', label: s('action') === 'draw' ? 'Drawing freeform strokes' : `Computer: ${s('action')}`, subject: s('intent') || undefined }
     case 'web_search': {
       const items = Array.isArray(args['items']) ? (args['items'] as unknown[]).map(String) : []
       const mode = items.length >= 2 ? 'compare' : s('mode').toLowerCase() || 'search'
@@ -219,8 +222,16 @@ function describe(name: string, args: Record<string, unknown>): { kind: ToolKind
       return { kind: 'system', label: 'Looking at your screen', subject: s('question') || undefined }
     case 'show_me_how':
       return { kind: 'other', label: 'Drawing the steps', subject: s('task') }
-    case 'call_me':
-      return { kind: 'other', label: 'Calling you', subject: s('message').slice(0, 80) }
+    case 'research_business':
+      return { kind: 'research', label: 'Researching the business', subject: s('name') || s('url').replace(/^https?:\/\/(www\.)?/, '').slice(0, 60) }
+    case 'download_images':
+      return { kind: 'web', label: 'Collecting real images' }
+    case 'check_site':
+      return { kind: 'build', label: 'Testing the website', subject: s('target').split(/[\\/]/).filter(Boolean).slice(-2).join('/') }
+    case 'whatsapp':
+      return s('action') === 'read' ? null : { kind: 'other', label: s('action') === 'send' ? 'WhatsApp message' : s('action') === 'call' ? 'WhatsApp call' : 'Opening WhatsApp', subject: s('contact') || s('phone') || s('lead_id') || undefined }
+    case 'screen_context':
+      return { kind: 'system', label: 'Reading the screen' }
     default:
       return null
   }
@@ -248,8 +259,27 @@ function summarize(name: string, r: ToolResult): Pick<ToolActivity, 'summary' | 
       return { summary: String(r['description'] ?? '') }
     case 'show_me_how':
       return { summary: Array.isArray(r['steps']) ? (r['steps'] as string[]).join('\n') : String(r['say'] ?? '') }
-    case 'call_me':
-      return { summary: String(r['note'] ?? '') }
+    case 'research_business': {
+      const f = r['facts'] as { name?: { value?: string } | string; phones?: unknown[]; menu?: { count: number }; images?: { count: number }; unavailable?: string[]; sources?: { url: string; status: string }[] } | undefined
+      const nm = f && typeof f.name === 'object' ? f.name.value : undefined
+      return {
+        summary: f ? `${nm ?? 'Business'} · ${r['pages_read']} page(s) read · ${f.menu?.count ?? 0} menu items · ${f.images?.count ?? 0} images${f.unavailable?.length ? ` · unavailable: ${f.unavailable.join(', ')}` : ''}` : String(r['note'] ?? ''),
+        sources: (f?.sources ?? []).filter((x) => x.status === 'ok').slice(0, 8).map((x) => ({ title: x.url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60), url: x.url }))
+      }
+    }
+    case 'download_images':
+      return { summary: `${(r['saved'] as unknown[] | undefined)?.length ?? 0} image(s) saved with credits` }
+    case 'check_site': {
+      const issues = (r['issues'] as string[] | undefined) ?? []
+      const rv = r['review'] as { score?: number } | undefined
+      return { summary: `${issues.length ? `${issues.length} issue(s): ${issues.slice(0, 3).join(' · ')}` : 'All checks passed (desktop + mobile)'}${rv?.score ? ` · design ${rv.score}/10` : ''}` }
+    }
+    case 'whatsapp':
+      return { summary: String(r['note'] ?? r['status'] ?? '') }
+    case 'screen_context': {
+      const w = r['activeWindow'] as { app?: string; title?: string } | undefined
+      return { summary: w ? `${w.app}: ${w.title}` : '' }
+    }
     default:
       return {}
   }
@@ -277,11 +307,12 @@ async function runExtra(host: ToolHost, name: string, args: Record<string, unkno
           ? 'Live Google Search was unavailable, so this answer comes from other web sources plus general knowledge. Tell the user the answer; do not say you found nothing.'
           : undefined
       // The island card shows the readable list; the model gets everything incl. page excerpts.
-      return { ok: true, answer: r.text, sources: r.sources, via: r.backend, ...(note ? { note } : {}) }
+      return { ok: true, answer: r.text, sources: r.sources, via: r.backend, notice: UNTRUSTED, ...(note ? { note } : {}) }
     }
     case 'read_webpage': {
       const r = await readWebpage(str('url'), signal)
-      return { ok: true, ...r }
+      // Page text is data: it must never be able to steer the agent.
+      return { ok: true, url: r.url, title: r.title, truncated: r.truncated, notice: UNTRUSTED, page_text_untrusted: r.text }
     }
     case 'play_media': {
       const query = str('query')
@@ -388,9 +419,14 @@ async function runExtra(host: ToolHost, name: string, args: Record<string, unkno
       const message = str('message')
       if (!message) return { error: 'What should I say on the call?' }
       try {
-        return { ok: true, note: await host.callUser(message) }
+        // "the user" is resolved to the configured defaultContact by startWhatsAppCall
+        const result = await host.startWhatsAppCall('the user', message)
+        if (result.called) {
+          return { ok: true, note: 'Calling you now.' }
+        }
+        return { error: result.error || 'Could not start the call.' }
       } catch (err) {
-        return { error: `${err instanceof Error ? err.message : String(err)} Set up calls in Settings → Notifications & calls.` }
+        return { error: `${err instanceof Error ? err.message : String(err)}` }
       }
     }
     case 'clipboard': {
@@ -413,15 +449,26 @@ async function runExtra(host: ToolHost, name: string, args: Record<string, unkno
  * activity so the island can show a live card.
  */
 export async function runTool(host: ToolHost, name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
+  const work = async (s: AbortSignal) => {
+    try { return await runToolOrdered(host, name, args, s) }
+    finally { if (inputTools.has(name) && !['computer','screen_context','look_at_screen'].includes(name)) desktopInput.invalidate() }
+  }
+  // Screen reads share the lock: their coordinates must refer to a stable input interval.
+  const inputTools = new Set(['computer','screen_context','look_at_screen','ui_click','ui_type','press_keys','window','close_app','launch_app','open','play_media','whatsapp','show_me_how','call_control'])
+  return inputTools.has(name) ? desktopInput.run(work, signal) : work(AbortSignal.any([desktopInput.signal, ...(signal ? [signal] : [])]))
+}
+
+async function runToolOrdered(host: ToolHost, name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ToolResult> {
+  signal.throwIfAborted()
   const meta = describe(name, args)
   const startedAt = new Date().toISOString()
   const card: ToolActivity | null = meta ? { id: randomUUID(), tool: name, ...meta, status: 'running', startedAt, updatedAt: startedAt } : null
   if (card) host.toolActivity(card)
   try {
-    const r = (await runExtra(host, name, args, signal)) ?? (await runDesktopTool(host, name, args, signal))
+    const r = name === 'computer' ? await runComputerTool(host, args, signal) : (await runExtra(host, name, args, signal)) ?? (await runOperatorTool(host, name, args, signal)) ?? (await runDesktopTool(host, name, args, signal))
     if (card) {
-      const err = typeof r['error'] === 'string' ? (r['error'] as string) : undefined
-      const label = err ? `${card.label} failed` : (DONE_LABEL[card.label] ?? card.label)
+      const err = typeof r['error'] === 'string' ? (r['error'] as string) : r['ok'] === false ? String(r['verdict'] ?? 'The requested operation did not pass verification.') : undefined
+      const label = err ? `${card.label} failed` : r['status'] === 'partial' ? 'Research incomplete' : (DONE_LABEL[card.label] ?? card.label)
       host.toolActivity({ ...card, ...(err ? { summary: err } : summarize(name, r)), label, subject: card.subject, status: err ? 'error' : 'done', updatedAt: new Date().toISOString() })
     }
     return r

@@ -3,7 +3,7 @@
  *
  * Wraps the real engine backend (Astra) and fills in contract methods the
  * engine does not implement yet with real Windows/Electron integrations:
- * files, terminal, apps, editor, browser, window info, calls, recurring
+ * files, terminal, apps, editor, browser, window info, recurring
  * automations, notification policy, memory context and task follow-ups.
  *
  * Rules:
@@ -12,7 +12,7 @@
  *    back when it reports NOT_IMPLEMENTED, so engine upgrades win automatically.
  *  - Internal engine branding is removed from user-visible strings.
  */
-import { Notification, powerMonitor, safeStorage, shell, BrowserWindow, dialog } from 'electron'
+import { Notification, safeStorage, shell, BrowserWindow, dialog } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -27,6 +27,7 @@ import {
   type CameraState,
   type ChatMessage,
   type Conversation,
+  type ComputerAction,
   type Interaction,
   type DiagnosticCheck,
   type Integration,
@@ -49,18 +50,29 @@ import {
 import { DEFAULT_NOTIFICATION_POLICY, deepMerge } from '../../shared/defaults'
 import type { BackendContext } from '../backendContext'
 import { AppsService, findVSCode, type AppsState } from './apps'
-import { CALLS_DEFAULT, CallService, type CallsState } from './calls'
 import { FileService, type FilesState } from './files'
 import { JsonDoc } from './jsonDoc'
-import { atLeast, debrand, inQuietHours, isInside, relevance, stripToolMarkup, toWholeHour } from './pure'
+import { atLeast, debrand, inQuietHours, relevance, stripToolMarkup, toWholeHour } from './pure'
+import { pathBlockReason } from './pathPolicy'
 import { Scheduler, type SchedulerState } from './scheduler'
 import { SecretStore } from './secrets'
 import { TerminalService, type Notify, type TerminalState } from './terminal'
 import { ApprovalService, type RulesState } from './approvals'
+import { ActionApprovals, type ActionRequest } from './actionApprovals'
+import { LeadStore, type LeadsState } from './leads'
+import { BrowserAgent } from '../tools/browserAgent'
+import { CallAgent } from '../voice/callAgent'
+import { hangUpCall } from '../tools/whatsappVision'
+import { audioState, MicSwap } from '../tools/audioDevices'
 import { AgentTasks, type AgentTasksState } from './agentTasks'
+import { WhatsAppCallService, type WhatsAppCallsState } from './whatsappCalls'
 import type { CommandContext } from './commandRisk'
 import { PROJECTS_DIR, resolveUserPath } from '../voice/desktopTools'
 import { pcControl } from '../tools/pcControl'
+import { uia } from '../tools/uia'
+import { computerController } from '../computer/controller'
+import { desktopInput } from '../computer/inputQueue'
+import { isDesktopMission } from '../computer/focusPolicy'
 import { WindowsInfo } from './windowsInfo'
 import { friendlyError, VoiceEngine, type VoiceConfig } from '../voice/engine'
 import { TextAgent } from '../voice/textAgent'
@@ -84,7 +96,8 @@ interface Prefs {
 }
 
 const PREFS_DEFAULT: Prefs = {
-  assistant: { stayAwake: true, autonomous: false },
+  // Stay-awake off by default: an always-open conversation answers anyone talking in the room.
+  assistant: { stayAwake: false, autonomous: false },
   voice: {},
   notify: DEFAULT_NOTIFICATION_POLICY,
   notifyImported: false,
@@ -133,9 +146,9 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   const filesDoc = new JsonDoc<FilesState>(join(dir, 'files.json'), { roots: [] })
   const terminalDoc = new JsonDoc<TerminalState>(join(dir, 'terminal.json'), { runs: [] })
   const appsDoc = new JsonDoc<AppsState>(join(dir, 'apps.json'), { apps: [] })
-  const callsDoc = new JsonDoc<CallsState>(join(dir, 'calls.json'), CALLS_DEFAULT)
   const schedDoc = new JsonDoc<SchedulerState>(join(dir, 'automations.json'), { automations: [], runs: [] })
-  const docs = [prefs, filesDoc, terminalDoc, appsDoc, callsDoc, schedDoc]
+  const whatsappCallsDoc = new JsonDoc<WhatsAppCallsState>(join(dir, 'whatsappCalls.json'), { defaultContact: '+91 9999653622', autoCallEnabled: true, minPriority: 'low' })
+  const docs = [prefs, filesDoc, terminalDoc, appsDoc, schedDoc, whatsappCallsDoc]
   const secrets = new SecretStore(ctx.userDataPath)
   const allowTask = new Set<string>()
   const attachments = new Map<string, { name: string; content: string; size: number }>()
@@ -160,14 +173,14 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     return {
       // On by default (on-device spotting only); the user can switch it off any time.
       wakeEnabled: v.wakeWordEnabled ?? true,
-      sensitivity: v.sensitivity ?? 0.8,
+      sensitivity: v.sensitivity ?? 0.6,
       micDeviceId: v.micDeviceId ?? null,
       model: v.sttProvider && /live|native-audio/i.test(v.sttProvider) ? v.sttProvider : DEFAULT_LIVE_MODEL,
       voice: v.ttsVoice && GEMINI_VOICES.some((x) => x.name === v.ttsVoice) ? v.ttsVoice : DEFAULT_VOICE,
       idleTimeoutSec: v.listenTimeoutSec ?? 15,
       silenceMs: v.silenceTimeoutMs ?? 800,
       speakingRate: v.ttsRate ?? 1,
-      stayAwake: prefs.get().assistant?.stayAwake ?? true
+      stayAwake: prefs.get().assistant?.stayAwake ?? false
     }
   }
   const voiceInteractions: Interaction[] = []
@@ -255,17 +268,39 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     }
     const st = await stat(real)
     if (!st.isDirectory()) throw new ZvyraError('INVALID_ARGS', `Not a folder: ${real}`)
-    const roots = [homedir(), ...(await allowedRoots())]
-    for (const r of roots) {
-      const rr = await realpath(r).catch(() => r)
-      if (isInside(rr, real)) return real
-    }
-    throw new ZvyraError('PERMISSION_DENIED', `Commands can only run in your user folders or folders you authorised in Files. “${real}” is outside them.`)
+    // Any folder the user works in (any drive); only other users' profiles are refused.
+    const why = pathBlockReason(real, 'read', { home: homedir(), env: process.env })
+    if (why) throw new ZvyraError('PERMISSION_DENIED', why)
+    return real
   }
-  const classifyContext = async (cwd: string): Promise<CommandContext> => ({ cwd, home: homedir(), allowedRoots: await allowedRoots(), env: process.env })
+  // The folder a command runs in counts as authorised for its writes (protected system folders stay critical).
+  const classifyContext = async (cwd: string): Promise<CommandContext> => {
+    const ws = await toolHost.workspace().catch(() => null)
+    const isDriveRoot = /^[a-z]:\\?$/i.test(cwd)
+    return { cwd, home: homedir(), allowedRoots: [...(await allowedRoots()), ...(ws?.path ? [ws.path] : []), ...(isDriveRoot ? [] : [cwd])], env: process.env }
+  }
+  /** Approvals for messages and submissions. Never auto-approved, not even in Bypass mode. */
+  const actionApprovals = new ActionApprovals({
+    requested: (r) => {
+      emit('permission.requested', r)
+      notify({ id: approvalToastId(r.id), key: `approval:${r.id}`, kind: 'approval', title: 'ZVYRA needs your OK', body: r.title, detail: r.details?.find((d) => d.label === 'Message' || d.label === 'To')?.value.slice(0, 140), timeoutMs: 0, permissionId: r.id })
+    },
+    resolved: (id, decision) => {
+      emit('permission.resolved', { id, decision })
+      emit('desktop.toastDismiss', { id: approvalToastId(id) })
+    }
+  })
   const terminal = new TerminalService(terminalDoc, resolveCommandCwd, emit, activity, approvals, classifyContext, notify, () => !!prefs.get().assistant?.autonomous)
   const apps = new AppsService(appsDoc, activity)
-  const calls = new CallService(callsDoc, secrets, activity)
+  const whatsappCalls = new WhatsAppCallService(
+    whatsappCallsDoc,
+    ctx.logger,
+    () => secrets.get(GEMINI_KEY),
+    () => voiceConfig().model,
+    () => voiceConfig().voice,
+    async () => (await call('settings.get', undefined).catch(() => null))?.profile.name?.trim(),
+    ctx.userDataPath
+  )
 
   /* --------------------------------------------------------------- debranding */
 
@@ -374,9 +409,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     const blocked = suppressed(n)
     const spoken = !blocked && p.spoken && atLeast(n.priority, p.spokenMinPriority)
     if (spoken) void voice.speak(`${n.title}. ${n.body}`.slice(0, 600)).catch(() => undefined)
-    const callIt = !blocked && calls.shouldCall(n.priority, atLeast)
-    if (callIt) void calls.place(`ZVYRA update. ${n.title}. ${n.body}`).catch(() => undefined)
-    return { ...n, delivered: { desktop: !blocked && p.desktop, spoken, call: callIt } }
+    return { ...n, delivered: { desktop: !blocked && p.desktop, spoken } }
   }
 
   /* --------------------------------------------------------------- tasks */
@@ -396,6 +429,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         .slice(0, 6)
       if (picked.length) instruction += `\n\nContext from saved memory:\n${picked.map(({ m }) => `- ${m.title}${m.content ? `: ${m.content.slice(0, 300)}` : ''}`).join('\n')}`
     }
+    if(secrets.has(GEMINI_KEY)&&isDesktopMission(instruction))return agentTasks.get(startBuild(instruction,input.source).id)!
     const t = await call('tasks.create', { instruction, source: input.source, projectId, model: input.model })
     return dbTask(t)
   }
@@ -475,34 +509,12 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     (e) => emit('task.event', e)
   )
 
-  /** No keyboard/mouse for a while, or the PC is locked. */
-  const userAway = () => {
-    try {
-      return powerMonitor.getSystemIdleState(calls.awayMinutes() * 60) !== 'active'
-    } catch {
-      return false
-    }
-  }
 
-  /**
-   * Phone the user about a finished task when they asked for it, or when they
-   * are away from the PC and away-calls are on. Never throws.
-   */
-  const callAbout = (asked: boolean, message: string) => {
-    if (!asked && !(calls.wantsAwayCalls() && userAway())) return
-    void calls
-      .place(`Hi, this is ZVYRA. ${message}`)
-      .then(() => notify({ key: `call:${message}`, kind: 'info', title: 'Calling your phone', body: message.slice(0, 160), timeoutMs: 6000 }))
-      .catch((e) => {
-        ctx.logger.warn('calls', 'call failed', { message: String((e as Error)?.message ?? e) })
-        if (asked) notify({ key: `callfail:${message}`, kind: 'error', title: 'Couldn’t call you', body: String((e as Error)?.message ?? e).slice(0, 200), timeoutMs: 9000 })
-      })
-  }
-
-  function startBuild(instruction: string, o: { callWhenDone?: boolean } = {}) {
+  function startBuild(instruction: string, source:Task['source']='voice') {
+    const computerMission=isDesktopMission(instruction)
     const id = randomUUID()
     const startedAt = new Date().toISOString()
-    let card: ToolActivity = { id, tool: 'run_task', kind: 'build', label: 'Building', subject: instruction.slice(0, 160), status: 'running', steps: [], startedAt, updatedAt: startedAt }
+    let card: ToolActivity = { id, tool: 'run_task', kind: computerMission?'system':'build', label: computerMission?'Using your computer':'Building', subject: instruction.slice(0, 160), status: 'running', steps: [], startedAt, updatedAt: startedAt }
     let files: string[] = []
     const update = (patch: Partial<ToolActivity>) => {
       card = { ...card, ...patch, updatedAt: new Date().toISOString() }
@@ -515,7 +527,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     const ctrl = new AbortController()
     builds.set(id, ctrl)
     // Every builder job is a real task in the Tasks screen.
-    const task = agentTasks.start(instruction, 'voice', ctrl)
+    const task = agentTasks.start(instruction, source, ctrl)
     // Fresh agent per job so parallel builds never share conversation history.
     const builder = new TextAgent(() => secrets.get(GEMINI_KEY), toolHost, systemContext, ctx.logger)
     void builder
@@ -523,6 +535,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         instruction,
         (u) => {
           if (u.files) files = u.files
+          if (u.plan) agentTasks.setPlan(task.id, u.plan)
           if (u.action) {
             agentTasks.step(task.id, u.action)
             update({ steps: [...(card.steps ?? []), u.action].slice(-8), summary: files.length ? `${files.length} file${files.length === 1 ? '' : 's'} written` : 'Planning…' })
@@ -534,12 +547,18 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         ctrl.signal
       )
       .then((r) => {
-        update({ status: 'done', label: 'Built', summary: r.reply.slice(0, 900) })
+        if (!r.ok) {
+          update({ status: 'error', label: 'Build incomplete', summary: r.reply.slice(0, 900) })
+          agentTasks.finish(task.id, { status: 'failed', error: r.reply, files: r.files })
+          activity('task.incomplete', `Builder needs attention: ${instruction.slice(0, 80)}`, r.files[0], 'warning')
+          return
+        }
+        update({ status: 'done', label: computerMission?'Task completed':'Built', summary: r.reply.slice(0, 900) })
         agentTasks.finish(task.id, { status: 'completed', summary: r.reply, files: r.files })
         activity('task.completed', `Builder finished: ${instruction.slice(0, 80)}`, r.files[0], 'success')
         notify({ key: `task:${id}`, kind: 'success', title: 'Build finished — done', body: r.reply.slice(0, 220), detail: r.files[0] ? r.files[0].replace(/[\\/][^\\/]+$/, '') : undefined, timeoutMs: 9000 })
         announce(`Done! Your build is finished: ${shortTitle(task.title)}.`)
-        callAbout(!!o.callWhenDone, `Your build is finished: ${shortTitle(task.title)}. ${r.reply.replace(/[`*_#]/g, '').slice(0, 300)}`)
+        void whatsappCalls.notifyTaskCompletion(task.id, shortTitle(task.title), r.reply, 'high').catch(() => undefined)
       })
       .catch((err) => {
         const why = friendlyError(err).replace(/^Gemini Live: /, '')
@@ -549,7 +568,6 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         if (!ctrl.signal.aborted) {
           notify({ key: `task:${id}`, kind: 'error', title: 'Build failed', body: why, detail: instruction.slice(0, 120), timeoutMs: 10_000 })
           announce(`Sorry, the build stopped: ${why}`)
-          callAbout(!!o.callWhenDone, `The build ${shortTitle(task.title)} stopped. ${why}`)
         }
       })
       .finally(() => builds.delete(id))
@@ -569,8 +587,120 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   /** Timers and other one-off alerts: right-side ZVYRA notification (the shell falls back to a native one). */
   const notifyUser = (title: string, body: string) => notify({ key: `note:${title}:${body}`, kind: 'info', title, body, timeoutMs: 8000 })
 
+  const leadsDoc = new JsonDoc<LeadsState>(join(dir, 'leads.json'), { leads: [] })
+  docs.push(leadsDoc as never)
+  const leads = new LeadStore(leadsDoc)
+
+  /** Consequential actions (messages, calls, risky clicks): the user decides in ZVYRA's UI, never Bypass mode. */
+  const requestApproval = async (req: ActionRequest, signal?: AbortSignal) => {
+    const r = actionApprovals.request(req)
+    const onAbort = () => {
+      try {
+        actionApprovals.respond(r.id, 'deny')
+      } catch {
+        /* already answered */
+      }
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const outcome = await r.outcome.finally(() => signal?.removeEventListener('abort', onAbort))
+    activity(outcome === 'allow_once' ? 'permission.approved' : 'permission.denied', `${outcome === 'allow_once' ? 'Approved' : outcome === 'expired' ? 'Expired' : 'Denied'}: ${req.title}`, undefined, outcome === 'allow_once' ? 'success' : 'info')
+    return { approved: outcome === 'allow_once', outcome, fingerprint: r.fingerprint }
+  }
+
+  let browserAgent: BrowserAgent | null = null
+  const callAgent = new CallAgent(ctx.logger, join(__dirname, '../preload'))
+  /*
+   * Assisted calls. WhatsApp uses the Windows default microphone; for the call it is switched to
+   * "CABLE Output" (ZVYRA's voice) and restored right after, so the user's own calls are untouched.
+   * ZVYRA's wake word stays on the user's real microphone the whole time, so "Hey Zvyra, let me talk"
+   * and "Hey Zvyra, take over" work during the call.
+   */
+  const micSwap = new MicSwap(join(dir, 'mic-swap.json'))
+  void micSwap.recover().catch((e) => ctx.logger.warn('call', 'could not restore the microphone', { message: String((e as Error)?.message ?? e) }))
+  let realMic = ''
+  const prepareMic = async () => {
+    const s = await audioState()
+    realMic = s.devices.find((d) => d.id === s.defaultRecording[2] && !/CABLE/i.test(d.name))?.name ?? s.devices.find((d) => d.flow === 'recording' && !/CABLE/i.test(d.name))?.name ?? ''
+    voice.pinMic(realMic)
+    await micSwap.toCable()
+  }
+  const releaseMic = async () => {
+    await micSwap.restore().catch((e) => ctx.logger.warn('call', 'could not restore the microphone', { message: String((e as Error)?.message ?? e) }))
+    voice.pinMic(null)
+  }
+  const assistantCall = {
+    check: () => callAgent.checkAudio(),
+    prepare: prepareMic,
+    release: releaseMic,
+    active: () => callAgent.speaker,
+    handBack: () => callAgent.handBack(),
+    takeOver: (goal?: string) => callAgent.takeOver(goal),
+    end: () => callAgent.end('Ended on your request.'),
+    start: async (contact: string, goal: string, o: { joined?: boolean } = {}) => {
+      const key = secrets.get(GEMINI_KEY)
+      if (!key) throw new Error('Add a Gemini API key in Settings → Voice first.')
+      const owner = (await call('settings.get', undefined).catch(() => null))?.profile.name?.trim() || 'the user'
+      const cfg = voiceConfig()
+      const id = `call-${randomUUID()}`
+      const startedAt = new Date().toISOString()
+      const card = (patch: Partial<ToolActivity>) => toolActivity({ id, tool: 'whatsapp', kind: 'other', label: `On call with ${contact}`, subject: goal.slice(0, 120), status: 'running', startedAt, updatedAt: new Date().toISOString(), ...patch })
+      if (!micSwap.active) await prepareMic()
+      voice.setCallActive(true)
+      card({ summary: o.joined ? 'ZVYRA is taking over the call…' : 'Ringing… ZVYRA will speak when they answer.' })
+      activity('call.assistant', o.joined ? `ZVYRA took over the call with ${contact}` : `ZVYRA is calling ${contact} for you`, goal.slice(0, 160))
+      try {
+        await callAgent.start({
+          key,
+          model: cfg.model,
+          voice: cfg.voice,
+          contact,
+          owner,
+          goal,
+          realMic,
+          joined: o.joined,
+          hangUp: () => hangUpCall(key),
+          onUpdate: (u) => {
+            const last = u.lines.slice(-4).map((l) => `${l.who === 'them' ? contact : 'ZVYRA'}: ${l.text}`)
+            if (u.state !== 'ended') return card({ summary: [u.note, ...last].filter(Boolean).join('\n') || 'Ringing… ZVYRA will speak when they answer.', steps: last })
+            voice.setCallActive(false)
+            void releaseMic()
+            const transcript = u.lines.map((l) => `${l.who === 'them' ? contact : 'ZVYRA'}: ${l.text}`).join('\n')
+            card({ status: 'done', label: `Call with ${contact} ended`, summary: `${u.note ?? ''}\n${last.join('\n')}`.trim() })
+            activity('call.assistant.ended', `Call with ${contact} ended`, `${u.note ?? ''}\n${transcript}`.slice(0, 4000), 'success')
+            notify({ key: id, kind: 'info', title: `Call with ${contact} ended`, body: (u.note ?? '').slice(0, 220), timeoutMs: 12_000 })
+          }
+        })
+      } catch (err) {
+        voice.setCallActive(false)
+        await releaseMic()
+        card({ status: 'error', label: 'Assisted call failed', summary: err instanceof Error ? err.message : String(err) })
+        throw err
+      }
+    }
+  }
   const toolHost: ToolHost = {
+    computerEnabled: async () => (await call('computer.status', undefined)).enabled,
+    assistantCall,
+    ownerName: async () => (await call('settings.get', undefined).catch(() => null))?.profile.name?.trim() || undefined,
     activity,
+    requestApproval,
+    leads,
+    cancelTasks: () => {
+      desktopInput.stop()
+      computerController.stop()
+      const n = builds.size + agentRuns.size
+      for (const c of [...builds.values(), ...agentRuns.values()]) c.abort()
+      agentTasks.cancelAll()
+      if (n) activity('task.cancelled', `Cancelled ${n} running task${n === 1 ? '' : 's'}`, 'By voice or chat request', 'info')
+      return n
+    },
+    defaultCountryCode: () => process.env['ZVYRA_DEFAULT_COUNTRY_CODE'] || undefined,
+    browser: () =>
+      (browserAgent ??= new BrowserAgent({
+        profileDir: join(ctx.userDataPath, 'browser-profile'),
+        downloadsDir: join(homedir(), 'Downloads'),
+        approve: async (title, details) => (await requestApproval({ category: 'browser', title, description: 'ZVYRA’s browser wants to do this on a website.', risk: 'high', details, payload: { title, details } })).approved
+      })),
     geminiKey: () => secrets.get(GEMINI_KEY),
     toolActivity,
     notify: notifyUser,
@@ -580,22 +710,20 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     workspace: async () => {
       const p = await call('projects.active', undefined).catch(() => null)
       if (p?.path && !prefs.get().hiddenProjects.includes(p.id) && existsSync(p.path)) return { name: p.name, path: p.path, selected: true }
-      return { name: 'ZVYRA Projects', path: PROJECTS_DIR, selected: false }
+      // The legacy default folder is used only if it already exists; ZVYRA never creates it on its own.
+      if (existsSync(PROJECTS_DIR)) return { name: 'ZVYRA Projects', path: PROJECTS_DIR, selected: false }
+      return { name: 'No folder selected', path: '', selected: false }
     },
     projects: async () => (await visibleProjects()).map((p) => ({ id: p.id, name: p.name, path: p.path })),
     openInEditor: (path) => apps.openInEditor(path),
-    runTask: async (instruction, o) => {
+    runTask: async (instruction) => {
       if (!instruction.trim()) throw new Error('Empty instruction')
       if (!secrets.has(GEMINI_KEY)) {
         const t = await createTask({ instruction, source: 'voice' })
         activity('task.started', `Background task: ${t.title}`, undefined, 'info')
         return { id: t.id, title: t.title, status: t.status }
       }
-      return startBuild(instruction, { callWhenDone: o?.callWhenDone })
-    },
-    callUser: async (message) => {
-      await calls.place(`Hi, this is ZVYRA. ${message}`)
-      return `Calling ${calls.status().destinationMasked ?? 'your phone'} now.`
+      return startBuild(instruction)
     },
     extraRoots: async () => (await files.roots().catch(() => [])).map((r) => r.path),
     userApps: () => apps.list(),
@@ -627,23 +755,39 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         ]
           .filter(Boolean)
           .join(' ')
+      },
+    startWhatsAppCall: async (contact, goal) => {
+      // When contact is "the user" or similar, use the configured default contact
+      const targetContact = contact === 'the user' ? whatsappCalls.getState().defaultContact : contact
+      // Bypass approval for calls to the configured self-call number (user's own authorized number)
+      const isSelfCall = targetContact === whatsappCalls.getState().defaultContact
+      if (isSelfCall) {
+        const result = await whatsappCalls.startCall(targetContact, goal)
+        return { called: result.started, error: result.error }
       }
+      // For other contacts, the caller must use the whatsapp tool which goes through approval
+      return { called: false, error: 'Use the whatsapp tool to call other contacts (requires approval).' }
+    }
   }
 
   const systemContext = async () => {
         // Three independent lookups: run them together (they used to run one after another before every request).
-        const [s, project, mems] = await Promise.all([
+        const [s, project, mems, computer] = await Promise.all([
           call('settings.get', undefined).catch(() => null),
           call('projects.active', undefined).catch(() => null),
-          call('memory.list', {}).catch(() => [] as MemoryItem[])
+          call('memory.list', {}).catch(() => [] as MemoryItem[]),
+          call('computer.status',undefined).catch(()=>null)
         ])
         const keep = mems.filter((m) => m.pinned || m.kind === 'preference').slice(0, 8)
         return [
           `Current date and time: ${new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`,
           s?.profile.name ? `The user's name is ${s.profile.name}.` : '',
+          `Computer Control is ${computer?.enabled?'ENABLED and ready. Use the computer tool to carry out desktop requests.':'disabled. Enable it on the Computer page before native input.'}`,
           project
             ? `Workspace: the selected project “${project.name}” at ${project.path}. Relative paths and new work go there; “this project” means it.`
-            : `Workspace: no project is selected, so new work goes in ${PROJECTS_DIR}. Always tell the user the folder you used.`,
+            : existsSync(PROJECTS_DIR)
+              ? `Workspace: no project is selected; relative paths go in the existing folder ${PROJECTS_DIR}. If the user names a folder or path, use exactly that path. Always tell the user the folder you used.`
+              : 'Workspace: no project is selected and there is no default folder. For new projects ask the user where to create them (an absolute path) unless they already said; never invent a folder.',
           keep.length ? `Things the user asked you to remember:\n${keep.map((m) => `- ${m.title}${m.content ? `: ${m.content.slice(0, 200)}` : ''}`).join('\n')}` : ''
         ]
           .filter(Boolean)
@@ -669,7 +813,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   const agentRuns = new Map<string, AbortController>()
 
   /** Agent steps that mean real work on the PC (see textAgent ACTION_LABEL). */
-  const WORK_ACTION = /^(Writing|Fixing|Running|Opening|Launching|Closing|Inspecting|Testing|Pressing|PC:|minimize|maximize|restore|focus|minimize_all|restore_all)/i
+  const WORK_ACTION = /^(computer|Writing|Fixing|Running|Opening|Launching|Closing|Inspecting|Testing|Pressing|PC:|minimize|maximize|restore|focus|minimize_all|restore_all|Researching|Downloading|Finding stock|Choosing the design|Clicking|Typing|WhatsApp|Saving lead|Updating the lead|Drafting|Browser:)/i
 
   /** Typed commands from the island / Home go straight to the desktop agent. */
   async function submitToAgent(text: string, source: Interaction['source']): Promise<Interaction> {
@@ -704,6 +848,15 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
             push({ status: 'streaming', response: u.partial })
             return
           }
+          if (u.plan) {
+            // A declared plan means multi-step work: it becomes a task with live steps.
+            if (!taskId) {
+              taskId = agentTasks.start(text, source, ctrl).id
+              push({ taskId })
+            }
+            agentTasks.setPlan(taskId, u.plan)
+            return
+          }
           if (u.thinking && !u.action) {
             updateCard({ summary: u.thinking })
             if (taskId) agentTasks.progress(taskId, u.thinking)
@@ -728,16 +881,15 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         ctrl.signal
       )
       .then((r) => {
-        push({ status: 'done', response: r.reply })
-        updateCard({ status: 'done', label: 'Built', summary: r.reply.slice(0, 900) })
+        push({ status: r.ok ? 'done' : 'error', response: r.reply, error: r.ok ? undefined : 'Verification incomplete' })
+        updateCard({ status: r.ok ? 'done' : 'error', label: r.ok ? 'Built' : 'Build incomplete', summary: r.reply.slice(0, 900) })
         const failed = r.actions.filter((a) => /— failed$/.test(a)).length
-        const bad = !!failed && !r.files.length
+        const bad = !r.ok || (!!failed && !r.files.length)
         if (taskId) agentTasks.finish(taskId, bad ? { status: 'failed', error: r.reply, files: r.files } : { status: 'completed', summary: r.reply, files: r.files })
         // A finished build is announced out loud, like the background builder.
         if (r.files.length && !bad) announce(`Done! Your build is finished: ${shortTitle(text)}.`)
-        // Away from the PC while it worked: phone with the result.
-        if (taskId) callAbout(false, `${bad ? 'A task had problems' : 'Your task is done'}: ${shortTitle(text)}. ${r.reply.replace(/[`*_#]/g, '').slice(0, 300)}`)
-        // Only real work gets a notification; plain answers stay in the island.
+        // Away from the PC while it worked: WhatsApp call with the result.
+        if (taskId) void whatsappCalls.notifyTaskCompletion(taskId, shortTitle(text), r.reply, bad ? 'normal' : 'high').catch(() => undefined)
         if (r.files.length || r.actions.some((a) => !/— failed$/.test(a) && !/^(Checking status|Reading|Looking in|Reviewing)/.test(a))) {
           notify({
             key: `task:${i.id}`,
@@ -943,19 +1095,17 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
         ...i,
         backend: 'ZVYRA engine',
         backendVersion: debrand(i.backendVersion),
-        capabilities: { ...i.capabilities, files: true, terminal: true, browser: true, apps: true, codeEditor: true, calls: true, chatAttachments: true, automations: true, notifications: true, voice: true, wakeWord: true, voiceTuning: true }
+        capabilities: { ...i.capabilities, files: true, terminal: true, browser: true, apps: true, codeEditor: true, chatAttachments: true, automations: true, notifications: true, voice: true, wakeWord: true, voiceTuning: true }
       }
     },
     'system.diagnostics': async () => {
       const checks = (await call('system.diagnostics', undefined).catch(() => [] as DiagnosticCheck[])).map((c) => ({ ...c, label: debrand(c.label), detail: debrand(c.detail), fixRoute: c.fixRoute === 'settings/swarm' ? 'settings/ai' : c.fixRoute }))
       const code = findVSCode()
-      const cs = calls.status()
       return [
         ...checks,
         { id: 'credentials', label: 'Secure credential storage', status: safeStorage.isEncryptionAvailable() ? 'ok' : 'error', detail: safeStorage.isEncryptionAvailable() ? 'Windows data protection (DPAPI) available' : 'Encryption unavailable — secrets cannot be saved' },
         { id: 'scheduler', label: 'Automation scheduler', status: 'ok', detail: `${scheduler.list().filter((a) => a.enabled).length} active schedule(s); runs while ZVYRA is open` },
-        { id: 'vscode', label: 'Code editor', status: code ? 'ok' : 'warning', detail: code ?? 'VS Code not found — folders open in File Explorer' },
-        { id: 'calls', label: 'Work calls', status: cs.configured ? 'ok' : 'unknown', detail: cs.configured ? `Twilio → ${cs.destinationMasked}` : 'Not configured (optional)', fixRoute: 'settings/notifications' }
+        { id: 'vscode', label: 'Code editor', status: code ? 'ok' : 'warning', detail: code ?? 'VS Code not found — folders open in File Explorer' }
       ]
     },
     'system.logs': async (a) => (await call('system.logs', a)).map((l) => ({ ...l, scope: debrand(l.scope), message: debrand(l.message) })),
@@ -968,6 +1118,11 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       if (err) throw new ZvyraError('BACKEND_ERROR', err)
     },
     'system.stopAll': async () => {
+      desktopInput.stop()
+      computerController.stop()
+      voice.cancel()
+      actionApprovals.denyAll()
+      void callAgent.end('Stopped by you.')
       terminal.killAll()
       for (const c of [...builds.values(), ...agentRuns.values()]) c.abort()
       agentTasks.cancelAll()
@@ -1172,6 +1327,14 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
           throw new ZvyraError('INVALID_ARGS', err instanceof Error ? err.message : String(err))
         }
       }
+      // Messages, calls, submissions: answered only here too.
+      if (actionApprovals.owns(a.id)) {
+        try {
+          return actionApprovals.respond(a.id, a.decision)
+        } catch (err) {
+          throw new ZvyraError('INVALID_ARGS', err instanceof Error ? err.message : String(err))
+        }
+      }
       if (a.decision === 'allow_always') throw new ZvyraError('INVALID_ARGS', 'Always allow is only available for commands')
       if (a.decision !== 'allow_task') return call('permissions.respond', a)
       const pending = await call('permissions.pending', undefined)
@@ -1180,6 +1343,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       if (req?.taskId) allowTask.add(req.taskId)
     },
     'permissions.pending': async () => [
+      ...actionApprovals.list(),
       ...approvals.list(),
       ...(await call('permissions.pending', undefined).catch(() => [])).map((p) => ({ ...p, title: debrand(p.title), description: debrand(p.description) }))
     ],
@@ -1242,20 +1406,31 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
 
     'computer.status': async () => {
       const s = await call('computer.status', undefined)
-      return { ...s, adapter: debrand(s.adapter), error: debrand(s.error) }
+      return { ...s, phase: computerController.status, stopShortcut: (await call('settings.get', undefined)).shortcuts.stopAll, adapter: debrand(s.adapter), error: debrand(s.error) }
+    },
+    'computer.stop': async () => {
+      desktopInput.stop()
+      computerController.stop()
+      actionApprovals.denyAll()
+      voice.cancel()
+      for (const c of [...builds.values(), ...agentRuns.values()]) c.abort()
+      agentTasks.cancelAll()
+      return call('computer.stop', undefined)
+    },
+    'computer.setEnabled': async (a) => {
+      if (!a.enabled) { desktopInput.stop(); computerController.stop() }
+      return call('computer.setEnabled', a)
     },
     'computer.activeWindow': (a) => prefer('computer.activeWindow', a, () => windows.active()),
     'computer.windows': (a) => prefer('computer.windows', a, () => windows.list()),
-    'computer.history': (a) => prefer('computer.history', a, () => []),
+    'computer.history': async (a) => [...computerController.actions(a?.limit), ...await prefer('computer.history', a, () => [])].sort((x, y) => y.ts.localeCompare(x.ts)).slice(0, a?.limit ?? 100),
 
     'apps.integrations': () =>
       prefer('apps.integrations', undefined, async () => {
         const [conn, voice] = await Promise.all([call('swarm.connection', undefined).catch(() => null), call('voice.status', undefined).catch(() => null)])
-        const cs = calls.status()
         const extra: Integration[] = [
           { id: 'ai', name: 'AI provider', category: 'service', status: conn?.status === 'connected' ? 'connected' : conn?.hasApiKey ? 'error' : 'needs_setup', detail: conn?.status === 'connected' ? 'Connected' : (debrand(conn?.error) ?? 'Add an API key'), setupHint: 'Settings → AI & models' },
-          { id: 'speech', name: 'Windows speech', category: 'service', status: voice?.stt.ready ? 'connected' : 'needs_setup', detail: voice?.stt.ready ? 'Local recognition and voice ready' : voice?.stt.setupRequired, setupHint: 'Settings → Voice & microphone' },
-          { id: 'twilio', name: 'Twilio (work calls)', category: 'communication', status: cs.configured ? 'connected' : 'needs_setup', detail: cs.configured ? `Calls ${cs.destinationMasked}` : 'Optional', setupHint: 'Settings → Notifications & calls' }
+          { id: 'speech', name: 'Windows speech', category: 'service', status: voice?.stt.ready ? 'connected' : 'needs_setup', detail: voice?.stt.ready ? 'Local recognition and voice ready' : voice?.stt.setupRequired, setupHint: 'Settings → Voice & microphone' }
         ]
         return apps.integrations(extra)
       }),
@@ -1390,10 +1565,19 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       return policy()
     },
 
-    'calls.status': () => calls.status(),
-    'calls.configure': (a) => calls.configure(a.provider, a.values),
-    'calls.setEnabled': (a) => calls.setEnabled(a.enabled, a.minPriority, { callWhenAway: a.callWhenAway, awayMinutes: a.awayMinutes }),
-    'calls.test': () => calls.place('This is a test call from ZVYRA. Work calls are set up correctly.'),
+    'whatsappCalls.state': () => whatsappCalls.getState(),
+    'whatsappCalls.update': (a) => whatsappCalls.updateState(a),
+    'whatsappCalls.checkReadiness': async () => whatsappCalls.checkReadiness(),
+    'whatsappCalls.resolveContact': async (a) => whatsappCalls.resolveContact(a.name),
+    'whatsappCalls.startCall': async (a) => {
+      const result = await whatsappCalls.startCall(a.contact, a.goal, { joined: a.joined })
+      return { called: result.started, error: result.error }
+    },
+    'whatsappCalls.endCall': async () => whatsappCalls.endCall(),
+    'whatsappCalls.getStatus': () => whatsappCalls.getStatus(),
+    'whatsappCalls.handBack': () => whatsappCalls.handBack(),
+    'whatsappCalls.takeOver': (a) => whatsappCalls.takeOver(a.goal),
+    'whatsappCalls.isActive': () => whatsappCalls.isActive(),
 
     'setup.state': () => setupState(),
     'setup.testKey': async ({ provider, key }) => {
@@ -1461,6 +1645,15 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
     }
   }
 
+  const computerDoc = new JsonDoc<{ actions: ComputerAction[] }>(join(dir, 'computer-history.json'), { actions: [] })
+  docs.push(computerDoc as never)
+  computerController.restore(computerDoc.get().actions)
+  let computerEventSequence = 0
+  const unsubscribeComputer = computerController.subscribe((phase, action) => {
+    const sequence = ++computerEventSequence
+    if (action) { emit('computer.action', action); computerDoc.set({ actions: computerController.actions(300) }) }
+    void call('computer.status', undefined).then(s => { if (sequence === computerEventSequence) emit('computer.status', { ...s, phase }) }).catch(() => undefined)
+  })
   return {
     async invoke<K extends MethodName>(method: K, args: MethodArgs<K>): Promise<MethodResult<K>> {
       const fn = h[method] as ((a: MethodArgs<K>) => Promise<MethodResult<K>> | MethodResult<K>) | undefined
@@ -1471,11 +1664,17 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       return () => listeners.delete(listener)
     },
     async dispose() {
+      unsubscribeComputer()
+      desktopInput.stop()
+      computerController.stop()
+      for (const c of [...builds.values(), ...agentRuns.values()]) c.abort()
+      uia.dispose()
       voice.dispose()
       pcControl.dispose()
       scheduler.stop()
       terminal.killAll()
       windows.dispose()
+      whatsappCalls.dispose()
       if (snoozeTimer) clearTimeout(snoozeTimer)
       await Promise.all([...docs.map((d) => d.flush()), secrets.flush()])
       await inner.dispose?.()

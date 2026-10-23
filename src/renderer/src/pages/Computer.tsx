@@ -82,7 +82,7 @@ export function Computer() {
   }
 
   const startTask = async () => {
-    const t = await run(() => call('tasks.create', { instruction: instruction.trim(), source: 'home' }), { success: 'Computer task started' })
+    const t = await run(() => call('tasks.create', { instruction: `Computer task: ${instruction.trim()}`, source: 'home' }), { success: 'Computer task started' })
     if (t) {
       setInstruction('')
       navigate(`tasks/${t.id}`)

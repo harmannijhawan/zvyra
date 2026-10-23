@@ -1,12 +1,12 @@
-import { AlarmClockOff, Bell, BellOff, Phone, PhoneCall, Send } from 'lucide-react'
+import { AlarmClockOff, Bell, BellOff, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { CallProviderStatus, DeepPartial, NotificationCategory, NotificationPolicy, NotificationPriority } from '@shared/contract'
-import { Badge, Button, Card, ConfirmDialog, Toggle } from '../../components/ui'
+import type { DeepPartial, NotificationCategory, NotificationPolicy, NotificationPriority } from '@shared/contract'
+import { Button, Card } from '../../components/ui'
 import { call, errorMessage } from '../../lib/client'
 import { dateTime, humanize } from '../../lib/format'
 import { setState, useStore } from '../../lib/store'
-import { attempt, useAction } from '../../lib/useAction'
-import { ConfigForm, Row, SettingToggle } from './common'
+import { attempt } from '../../lib/useAction'
+import { Row, SettingToggle } from './common'
 
 const PRIORITIES: NotificationPriority[] = ['low', 'normal', 'high', 'critical']
 const CATEGORIES: { id: NotificationCategory; label: string }[] = [
@@ -80,120 +80,6 @@ export function NotificationSettings() {
         </Row>
         <SettingToggle label="Let critical alerts through" value={policy.quietHours.allowCritical} onChange={(v) => void update({ quietHours: { ...policy.quietHours, allowCritical: v } })} />
       </Card>
-
-      <CallSettings />
     </div>
-  )
-}
-
-function CallSettings() {
-  const [s, setS] = useState<CallProviderStatus | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-  const [provider, setProvider] = useState('')
-  const [confirmTest, setConfirmTest] = useState(false)
-  const [run, busy] = useAction()
-  useEffect(() => {
-    call('calls.status')
-      .then((r) => {
-        setS(r)
-        setProvider(r.provider ?? r.providers[0]?.id ?? '')
-      })
-      .catch((e) => setErr(errorMessage(e)))
-  }, [])
-  return (
-    <Card title="Work calls" icon={Phone}>
-      <div className="notice" style={{ marginBottom: 12 }}>
-        <PhoneCall />
-        <span>ZVYRA only places a phone call after you configure a supported provider and enable calls. It never shows a pretend call.</span>
-      </div>
-      {err && <div className="notice warning">{err}</div>}
-      {s && (
-        <>
-          <Row label="Status">
-            <Badge tone={s.configured ? 'success' : 'warning'}>{s.configured ? 'Provider configured' : 'Not configured'}</Badge>
-            {s.destinationMasked && <span className="mono">{s.destinationMasked}</span>}
-          </Row>
-          {s.providers.length === 0 ? (
-            <div className="muted" style={{ fontSize: 13, padding: '8px 0' }}>The connected backend doesn’t offer a calling provider yet.</div>
-          ) : (
-            <>
-              <Row label="Provider">
-                <select className="select" value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Call provider">
-                  {s.providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </Row>
-              <div style={{ padding: '6px 0 12px' }}>
-                <ConfigForm
-                  fields={s.fields}
-                  busy={busy}
-                  submitLabel="Save provider"
-                  onSubmit={(values) => void run(() => call('calls.configure', { provider, values }), { success: 'Call provider saved' }).then((r) => r && setS(r))}
-                />
-              </div>
-            </>
-          )}
-          <Row label="Call me for urgent alerts" help="Blocked or critical work, by the priority below.">
-            <Toggle
-              checked={s.enabled}
-              disabled={!s.configured}
-              label="Allow calls"
-              onChange={(v) => void run(() => call('calls.setEnabled', { enabled: v })).then((r) => r && setS(r))}
-            />
-          </Row>
-          <Row label="Call me when a task finishes while I’m away" help="Away = no keyboard or mouse for the time below, or the PC is locked. You can always say “call me”.">
-            <Toggle
-              checked={s.callWhenAway ?? true}
-              disabled={!s.configured}
-              label="Call when away"
-              onChange={(v) => void run(() => call('calls.setEnabled', { enabled: s.enabled, callWhenAway: v })).then((r) => r && setS(r))}
-            />
-          </Row>
-          <Row label="Away after">
-            <select
-              className="select"
-              value={String(s.awayMinutes ?? 5)}
-              disabled={!s.configured || s.callWhenAway === false}
-              onChange={(e) => void run(() => call('calls.setEnabled', { enabled: s.enabled, awayMinutes: Number(e.target.value) })).then((r) => r && setS(r))}
-              aria-label="Minutes before you count as away"
-            >
-              {[2, 5, 10, 15, 30, 60].map((m) => (
-                <option key={m} value={m}>
-                  {m} minutes
-                </option>
-              ))}
-            </select>
-          </Row>
-          <Row label="Only call for priority">
-            <select
-              className="select"
-              value={s.minPriority}
-              disabled={!s.configured}
-              onChange={(e) => void run(() => call('calls.setEnabled', { enabled: s.enabled, minPriority: e.target.value as NotificationPriority })).then((r) => r && setS(r))}
-              aria-label="Minimum priority for calls"
-            >
-              <option value="high">High and critical</option>
-              <option value="critical">Critical only</option>
-            </select>
-          </Row>
-          <Row label="Test call" help={s.lastCall ? `Last: ${s.lastCall.status}${s.lastCall.reference ? ` (${s.lastCall.reference})` : ''}${s.lastCall.error ? ` — ${s.lastCall.error}` : ''} · ${dateTime(s.lastCall.ts)}` : undefined}>
-            <Button size="sm" icon={PhoneCall} disabled={!s.configured} onClick={() => setConfirmTest(true)}>
-              Place test call
-            </Button>
-          </Row>
-        </>
-      )}
-      <ConfirmDialog
-        open={confirmTest}
-        title="Place a real test call?"
-        body="Your provider will call the configured number. Standard provider charges apply."
-        confirmLabel="Call now"
-        onClose={() => setConfirmTest(false)}
-        onConfirm={() => void run(() => call('calls.test'), { success: 'Call placed by provider' }).then((r) => r && setS(r))}
-      />
-    </Card>
   )
 }
