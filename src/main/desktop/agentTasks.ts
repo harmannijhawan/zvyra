@@ -5,8 +5,9 @@
  * and cancel / retry. Persisted so history survives restarts.
  */
 import { randomUUID } from 'node:crypto'
-import type { InteractionSource, Task, TaskEvent, TaskEventKind, TaskStep } from '../../shared/contract'
+import type { InteractionSource, Task, TaskEvent, TaskEventKind, TaskStep, TaskStatus } from '../../shared/contract'
 import type { JsonDoc } from './jsonDoc'
+import { desktopInput } from '../computer/inputQueue'
 
 export interface AgentTasksState {
   tasks: Task[]
@@ -16,6 +17,8 @@ export interface AgentTasksState {
 const MAX_TASKS = 200
 const MAX_EVENTS = 300
 const MAX_STEPS = 24
+
+const TERMINAL_STATUSES = new Set<TaskStatus>(['completed', 'failed', 'cancelled', 'interrupted'])
 
 export class AgentTasks {
   private controllers = new Map<string, AbortController>()
@@ -69,13 +72,21 @@ export class AgentTasks {
     return t
   }
 
+  setStatus(id: string, status: 'planning' | 'running' | 'verifying') {
+    const t = this.get(id)
+    if (!t || TERMINAL_STATUSES.has(t.status)) return
+    if (t.status === status) return
+    this.save({ ...t, status })
+    this.event(id, 'status', status === 'verifying' ? 'Verifying result' : status === 'planning' ? 'Planning actions' : 'Running')
+  }
+
   /** Tasks whose plan was declared by the agent (update_plan): tool calls then don't become plan steps. */
   private declared = new Set<string>()
 
   /** The agent's own step-by-step plan (replaces the plan; ids are kept per title). */
   setPlan(id: string, steps: { title: string; status: string }[]) {
     const t = this.get(id)
-    if (!t || t.status !== 'running') return
+    if (!t || TERMINAL_STATUSES.has(t.status)) return
     const valid = new Set(['pending', 'running', 'done', 'failed', 'skipped'])
     const plan: TaskStep[] = steps
       .filter((s) => s && typeof s.title === 'string' && s.title.trim())
@@ -89,7 +100,7 @@ export class AgentTasks {
   /** A new step started (previous one is done). */
   step(id: string, action: string) {
     const t = this.get(id)
-    if (!t || t.status !== 'running') return
+    if (!t || TERMINAL_STATUSES.has(t.status)) return
     if (this.declared.has(id)) {
       this.save({ ...t, currentAction: action })
       this.event(id, 'tool_call', action)
@@ -103,14 +114,19 @@ export class AgentTasks {
 
   progress(id: string, note: string) {
     const t = this.get(id)
-    if (!t || t.status !== 'running' || t.currentAction === note) return
+    if (!t || TERMINAL_STATUSES.has(t.status) || t.currentAction === note) return
     this.save({ ...t, currentAction: note })
   }
 
   finish(id: string, outcome: { status: 'completed' | 'failed' | 'cancelled'; summary?: string; error?: string; files?: string[] }) {
     const t = this.get(id)
     if (!t) return
+    // Terminal states are locked and immutable: late responses cannot restart or overwrite.
+    if (TERMINAL_STATUSES.has(t.status)) return
+
     this.controllers.delete(id)
+    desktopInput.cancelTask(id)
+
     const now = new Date().toISOString()
     const stepStatus = outcome.status === 'completed' ? 'done' : outcome.status === 'cancelled' ? 'skipped' : 'failed'
     // Steps that never started are reported as skipped, not as done.
@@ -122,16 +138,33 @@ export class AgentTasks {
   }
 
   cancel(id: string): Task | undefined {
-    this.controllers.get(id)?.abort()
+    const t = this.get(id)
+    if (!t) return undefined
+    if (TERMINAL_STATUSES.has(t.status)) return t
+
+    const ctrl = this.controllers.get(id)
+    if (ctrl) {
+      ctrl.abort()
+      this.controllers.delete(id)
+    }
+    desktopInput.cancelTask(id)
+    this.finish(id, { status: 'cancelled' })
     return this.get(id)
   }
 
   cancelAll() {
-    for (const c of this.controllers.values()) c.abort()
+    desktopInput.stop()
+    for (const [id, c] of this.controllers.entries()) {
+      c.abort()
+      this.finish(id, { status: 'cancelled' })
+    }
+    this.controllers.clear()
   }
 
   remove(id: string) {
     this.controllers.get(id)?.abort()
+    this.controllers.delete(id)
+    desktopInput.cancelTask(id)
     this.doc.set((s) => {
       const events = { ...s.events }
       delete events[id]
@@ -148,13 +181,26 @@ export class AgentTasks {
 
   private save(t: Task) {
     const next = { ...t, updatedAt: new Date().toISOString() }
-    this.doc.set((s) => ({ tasks: [next, ...s.tasks.filter((x) => x.id !== t.id)].slice(0, MAX_TASKS) }))
+    this.doc.set((s) => ({
+      tasks: [next, ...s.tasks.filter((x) => x.id !== t.id)].slice(0, MAX_TASKS)
+    }))
     this.emitTask(next)
   }
 
   private event(taskId: string, kind: TaskEventKind, message: string) {
-    const e: TaskEvent = { id: randomUUID(), taskId, ts: new Date().toISOString(), kind, message }
-    this.doc.set((s) => ({ events: { ...s.events, [taskId]: [...(s.events[taskId] ?? []), e].slice(-MAX_EVENTS) } }))
+    const e: TaskEvent = {
+      id: randomUUID(),
+      taskId,
+      ts: new Date().toISOString(),
+      kind,
+      message
+    }
+    this.doc.set((s) => ({
+      events: {
+        ...s.events,
+        [taskId]: [...(s.events[taskId] ?? []), e].slice(-MAX_EVENTS)
+      }
+    }))
     this.emitEvent(e)
   }
 }

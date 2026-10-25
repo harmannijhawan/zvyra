@@ -14,7 +14,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     sensitivity: 0.6,
     micDeviceId: null,
     listenTimeoutSec: 10,
-    silenceTimeoutMs: 1200,
+    silenceTimeoutMs: 750,
     sttProvider: '',
     ttsProvider: '',
     ttsVoice: null,

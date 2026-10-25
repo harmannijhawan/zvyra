@@ -13,4 +13,14 @@ describe('repeated desktop failure cutoff',()=>{
     expect(b.record({ok:false})).toBe(false);expect(b.record({ok:false})).toBe(false);expect(b.record({ok:false})).toBe(true)
     b.reset();expect(b.record({error:'once'})).toBe(false)
   })
+  it('allows bounded replanning without treating stale observations as three failed inputs',()=>{
+    const b=new ComputerFailureBudget()
+    for(let i=0;i<7;i++) {
+      expect(b.record({ok:false,recoverable:true,inputExecuted:false})).toBe(false)
+      expect(b.record({ok:true,frame:`f${i}`})).toBe(false)
+    }
+    expect(b.record({ok:false,recoverable:true,inputExecuted:false})).toBe(true)
+    b.reset();b.record({ok:false,recoverable:true,inputExecuted:false});b.record({ok:true,inputExecuted:true})
+    expect(b.record({ok:false,recoverable:true,inputExecuted:false})).toBe(false)
+  })
 })

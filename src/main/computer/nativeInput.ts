@@ -39,16 +39,25 @@ public static class ZvyraInput {
       // Smoothstep has zero velocity at both ends. These are real, paced
       // SendInput cursor positions, never a renderer cursor animation.
       double ease=t*t*(3-2*t);lastX=Math.Round(start.x+(x-start.x)*ease);lastY=Math.Round(start.y+(y-start.y)*ease);
-      Move(lastX,lastY);samples++;if(t>=1)break;
+      Move(lastX,lastY);
+      // SendInput queues a move; GetCursorPos can still expose the previous
+      // sample on a busy desktop. Wait for delivery before the next user-
+      // movement check instead of interpreting our queued move as interference.
+      var delivered=System.Diagnostics.Stopwatch.StartNew();
+      do { Check(cancel,hwnd);GetCursorPos(out actual);if(Math.Abs(actual.x-lastX)<=2&&Math.Abs(actual.y-lastY)<=2)break;System.Threading.Thread.Sleep(1); } while(delivered.ElapsedMilliseconds<40);
+      if(Math.Abs(actual.x-lastX)>2||Math.Abs(actual.y-lastY)>2)throw new Exception("Mouse did not reach its target; observe again");
+      samples++;if(t>=1)break;
       System.Threading.Thread.Sleep(8);
     } while(true);
     POINT end;GetCursorPos(out end);
     if(Math.Abs(end.x-x)>2||Math.Abs(end.y-y)>2)throw new Exception("Mouse did not reach its target; observe again");
     return new double[]{timer.Elapsed.TotalMilliseconds,samples,end.x,end.y};
   }
-  public static void Click(int x,int y,string button,int count) {
+  public static void Click(int x,int y,string button,int count,long hwnd) {
     Move(x,y); uint down=button=="right"?8u:button=="middle"?32u:2u;bool held=false;
-    try { for(int i=0;i<count;i++) { Mouse(0,0,down,0);held=true;Mouse(0,0,down*2,0);held=false;if(i+1<count)System.Threading.Thread.Sleep(65); } }
+    System.Threading.Thread.Sleep(16);
+    if(hwnd!=0&&GetForegroundWindow().ToInt64()!=hwnd)throw new Exception("Foreground window changed before click; observe again");
+    try { for(int i=0;i<count;i++) { Mouse(0,0,down,0);held=true;System.Threading.Thread.Sleep(24);Mouse(0,0,down*2,0);held=false;if(i+1<count)System.Threading.Thread.Sleep(65); } }
     finally { if(held)Mouse(0,0,down*2,0); }
   }
   public static void Text(string text, string cancel, long hwnd) {

@@ -78,6 +78,9 @@ export interface SavedAsset {
   rights: string
   attribution?: string
   license?: string
+  variants?: { relative: string; width: number; height: number; type: string; bytes: number }[]
+  srcset?: string
+  variantError?: string
 }
 
 const MAX_BYTES = 12 * 1024 * 1024
@@ -88,7 +91,27 @@ export async function decodeImage(buf: Buffer): Promise<ImageInfo | null> {
 }
 
 /** Largest width written into a website's assets folder (bigger photos are scaled down). */
-const MAX_ASSET_WIDTH = 2000
+export const MAX_ASSET_WIDTH = 3840
+
+export function responsiveWidths(width: number): number[] {
+  return [...new Set([480, 768, 1280, 1920, 2560, MAX_ASSET_WIDTH, width].filter(w => w <= width && w <= MAX_ASSET_WIDTH))].sort((a, b) => a - b)
+}
+
+async function saveVariants(project: string, relative: string, prepared: { info: ImageInfo; buf: Buffer }): Promise<Pick<SavedAsset, 'variants' | 'srcset' | 'variantError'>> {
+  try {
+    const { imageVariants } = await import('./render')
+    const outputs = await imageVariants(prepared.buf, `image/${prepared.info.type}`, responsiveWidths(prepared.info.width))
+    const variants: NonNullable<SavedAsset['variants']> = []
+    for (const output of outputs) {
+      const path = relative.replace(/\.[^.]+$/, `-${output.width}.webp`)
+      await writeFile(join(project, path), output.bytes)
+      variants.push({ relative: path, width: output.width, height: output.height, type: 'image/webp', bytes: output.bytes.length })
+    }
+    return { variants, srcset: variants.map(v => `${v.relative} ${v.width}w`).join(', ') }
+  } catch (error) {
+    return { variantError: `Responsive encoding unavailable; use the validated original: ${error instanceof Error ? error.message : String(error)}` }
+  }
+}
 
 /**
  * Decodes the bytes with a real decoder and returns web-ready bytes:
@@ -105,10 +128,12 @@ export async function prepareImage(buf: Buffer): Promise<{ info: ImageInfo; buf:
       if (decoded.isEmpty()) return null
       const { width, height } = decoded.getSize()
       if (width <= 0 || height <= 0 || width * height > 40_000_000 || !decoded.toBitmap().length) return null
-      if (width > MAX_ASSET_WIDTH && header.type === 'jpeg') {
+      if (width > MAX_ASSET_WIDTH) {
         const small = decoded.resize({ width: MAX_ASSET_WIDTH, quality: 'best' })
         const s = small.getSize()
-        return { info: { type: 'jpeg', width: s.width, height: s.height }, buf: small.toJPEG(84), ext: 'jpg' }
+        return header.type === 'png'
+          ? { info: { type: 'png', width: s.width, height: s.height }, buf: small.toPNG(), ext: 'png' }
+          : { info: { type: 'jpeg', width: s.width, height: s.height }, buf: small.toJPEG(84), ext: 'jpg' }
       }
       return { info: { type: header.type, width, height }, buf, ext: header.type === 'jpeg' ? 'jpg' : 'png' }
     }
@@ -116,6 +141,8 @@ export async function prepareImage(buf: Buffer): Promise<{ info: ImageInfo; buf:
     const mime = `image/${header.type}`
     const r = await decodeInChromium(buf, mime, MAX_ASSET_WIDTH)
     if (!r) return null
+    if (r.width <= MAX_ASSET_WIDTH && (header.type === 'webp' || header.type === 'avif'))
+      return { info: { type: header.type, width: r.width, height: r.height }, buf, ext: header.type }
     return { info: { type: 'jpeg', width: r.width > MAX_ASSET_WIDTH ? MAX_ASSET_WIDTH : r.width, height: r.width > MAX_ASSET_WIDTH ? Math.round((r.height * MAX_ASSET_WIDTH) / r.width) : r.height }, buf: r.jpeg, ext: 'jpg' }
   } catch {
     return null
@@ -262,7 +289,7 @@ export async function downloadAssets(
       continue
     }
     hashes.add(hash)
-    const name = `${isLogo ? 'logo' : slug(img.alt ?? img.role)}-${String(saved.length + 1).padStart(2, '0')}.${prepared.ext}`
+    const name = `${isLogo ? 'logo' : slug(img.alt ?? img.role)}-${hash.slice(0, 12)}.${prepared.ext}`
     const file = join(dir, name)
     await writeFile(file, prepared.buf)
     img.local = `assets/images/${name}`
@@ -280,6 +307,7 @@ export async function downloadAssets(
       kind: img.official ? 'official' : 'third-party',
       rights: img.rights
     })
+    Object.assign(saved[saved.length - 1], await saveVariants(projectDir, img.local, prepared))
   }
   opts.signal?.throwIfAborted()
   const creditsFile = await writeCredits(projectDir, saved)
@@ -330,7 +358,7 @@ export async function downloadStock(query: string, projectDir: string, opts: { c
       skipped.push({ url: item.url, reason: info ? `too small (${info.width}px)` : 'not a valid image' })
       continue
     }
-    const name = `stock-${slug(query)}-${String(saved.length + 1).padStart(2, '0')}.${prepared.ext}`
+    const name = `stock-${slug(query)}-${createHash('sha256').update(got.buf).digest('hex').slice(0, 12)}.${prepared.ext}`
     await writeFile(join(dir, name), prepared.buf)
     const license = `${item.license.toUpperCase()}${item.license_version ? ` ${item.license_version}` : ''}`
     saved.push({
@@ -349,6 +377,7 @@ export async function downloadStock(query: string, projectDir: string, opts: { c
       attribution: item.attribution ?? `“${item.title ?? 'Photo'}” by ${item.creator ?? 'unknown'} (${license})`,
       rights: `Openly licensed stock photo (${license}${item.license_url ? `, ${item.license_url}` : ''}). Credit the author on the site. Generic imagery: do not present it as this business's own product or premises.`
     })
+    Object.assign(saved[saved.length - 1], await saveVariants(projectDir, `assets/images/${name}`, prepared))
   }
   opts.signal?.throwIfAborted()
   const creditsFile = await writeCredits(projectDir, saved)

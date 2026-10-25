@@ -56,6 +56,8 @@ export class Shell {
   private islandDisplayId: number | null = null
   private dragging = false
   private pendingPermissions = new Set<string>()
+  private computerToolIds = new Set<string>()
+  private islandInteractive = false
   private hiddenBeforeApproval = false
   private pendingRoute: string | null = null
   private quitting = false
@@ -155,7 +157,11 @@ export class Shell {
   }
 
   private onBackendEvent(e: ZvyraEvent) {
-    if (e.type === 'settings.changed') {
+    if(e.type==='tool.activity'&&e.payload.tool==='computer') {
+      if(e.payload.status==='running')this.computerToolIds.add(e.payload.id)
+      else this.computerToolIds.delete(e.payload.id)
+      this.applyIslandMousePolicy()
+    } else if (e.type === 'settings.changed') {
       const prev = this.settings
       this.settings = e.payload
       if (prev.island.alwaysOnTop !== e.payload.island.alwaysOnTop) this.setAlwaysOnTop(e.payload.island.alwaysOnTop)
@@ -178,8 +184,10 @@ export class Shell {
       if (!this.pendingPermissions.size) this.hiddenBeforeApproval = !this.island || this.island.isDestroyed() || !this.island.isVisible()
       this.pendingPermissions.add(e.payload.id)
       this.revealIsland()
+      this.applyIslandMousePolicy()
     } else if (e.type === 'permission.resolved') {
       this.pendingPermissions.delete(e.payload.id)
+      this.applyIslandMousePolicy()
       if (!this.pendingPermissions.size && this.hiddenBeforeApproval) {
         this.hiddenBeforeApproval = false
         setTimeout(() => {
@@ -458,12 +466,22 @@ export class Shell {
     if (!win || win.isDestroyed()) return this.islandState()
     this.islandMode = mode
     if (mode === 'expanded' && focus) {
-      win.setIgnoreMouseEvents(false)
-      win.focus()
+      this.islandInteractive=true
+      this.applyIslandMousePolicy()
+      if(!this.computerToolIds.size||this.pendingPermissions.size)win.focus()
     }
     this.persistIsland()
     this.emitIsland()
     return this.islandState()
+  }
+
+  private applyIslandMousePolicy() {
+    const win=this.island
+    if(!win||win.isDestroyed())return
+    // Our own progress cards must never sit between an observed app and its
+    // physical click. Approval cards remain available to the user.
+    if(this.islandInteractive&&(!this.computerToolIds.size||this.pendingPermissions.size))win.setIgnoreMouseEvents(false)
+    else win.setIgnoreMouseEvents(true,{forward:true})
   }
 
   /** Docks the window to the exact top centre of its display (also after scaling/resolution changes). */
@@ -576,10 +594,8 @@ export class Shell {
       'guide.close': () => closeGuide(),
       'guide.setInteractive': ({ interactive }) => setGuideInteractive(!!interactive),
       'island.setInteractive': ({ interactive }) => {
-        const win = this.island
-        if (!win || win.isDestroyed()) return
-        if (interactive) win.setIgnoreMouseEvents(false)
-        else win.setIgnoreMouseEvents(true, { forward: true })
+        this.islandInteractive=interactive
+        this.applyIslandMousePolicy()
       },
       'main.show': ({ route } = {}) => this.showMain(route),
       'main.state': () => this.mainState(),

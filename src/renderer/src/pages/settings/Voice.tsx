@@ -222,11 +222,11 @@ export function VoiceSettings() {
             ))}
           </select>
         </Row>
-        <Row label="End-of-speech pause" help="How long a pause means you’ve finished speaking.">
+        <Row label="End-of-speech pause" help="Shorter pauses reply sooner. Your microphone keeps listening if you continue; choose a longer pause if you need more thinking time.">
           <select className="select" value={v.silenceTimeoutMs} onChange={(e) => void patchSettings({ voice: { silenceTimeoutMs: Number(e.target.value) } })} aria-label="End-of-speech pause">
-            {[500, 800, 1200, 1800].map((n) => (
+            {[500, 750, 1200, 1800, 2400, 3000].map((n) => (
               <option key={n} value={n}>
-                {(n / 1000).toFixed(1)} s{n === 800 ? ' (recommended)' : ''}
+                {n / 1000} s{n === 750 ? ' (recommended)' : ''}
               </option>
             ))}
           </select>

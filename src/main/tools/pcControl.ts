@@ -94,7 +94,7 @@ while ($true) {
       }
       'move' { [ZvyraInput]::Move([double]$req.x, [double]$req.y); $out = $true }
       'smoothMove' { $r = [ZvyraInput]::SmoothMove([double]$req.x,[double]$req.y,[string]$req.cancel,[int64]$req.hwnd); $out = @{elapsedMs=$r[0];samples=$r[1];endpoint=@{x=$r[2];y=$r[3]}} }
-      'click' { if ([int64]$req.hwnd -ne 0 -and [ZvyraInput]::GetForegroundWindow().ToInt64() -ne [int64]$req.hwnd) { throw 'Foreground window changed' }; [ZvyraInput]::Click([int]$req.x, [int]$req.y, [string]$req.button, [int]$req.count); $out = $true }
+      'click' { if ([int64]$req.hwnd -ne 0 -and [ZvyraInput]::GetForegroundWindow().ToInt64() -ne [int64]$req.hwnd) { throw 'Foreground window changed' }; [ZvyraInput]::Click([int]$req.x, [int]$req.y, [string]$req.button, [int]$req.count, [int64]$req.hwnd); $out = $true }
       'scroll' { if ([ZvyraInput]::GetForegroundWindow().ToInt64() -ne [int64]$req.hwnd) { throw 'Foreground window changed' }; [ZvyraInput]::Mouse(0,0,0x800,(-120 * [int]$req.dy)); if ($req.dx) { [ZvyraInput]::Mouse(0,0,0x1000,(120 * [int]$req.dx)) }; $out = $true }
       'text' { [ZvyraInput]::Text([string]$req.text,[string]$req.cancel,[int64]$req.hwnd); $out = $true }
       'release' { [ZvyraInput]::Release(); $out = $true }

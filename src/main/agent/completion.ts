@@ -3,12 +3,19 @@ export class CompletionEvidence {
   private failures = new Map<string, string>()
   private sites = new Map<string, boolean>()
   private computerPending = false
+  private computerSatisfied = false
 
   observe(tool: string, args: Record<string, unknown>, result: Record<string, unknown>) {
     const failed = result.ok === false || !!result.error
     if (tool === 'computer') {
-      if (failed || args.action !== 'observe') this.computerPending = true
-      if (!failed && result.verified === true) this.computerPending = false
+      if (failed || args.action !== 'observe') {
+        this.computerPending = true
+        this.computerSatisfied = false
+      }
+      if (!failed && (result.verified === true || result.completed === true || result.ready === true)) {
+        this.computerPending = false
+        this.computerSatisfied = true
+      }
     }
     const identity = String(args.save_to ?? args.dossier_path ?? args.target ?? '')
     const key = `${tool}:${identity}`
@@ -28,9 +35,18 @@ export class CompletionEvidence {
     }
   }
 
+  markComputerSatisfied() {
+    this.computerPending = false
+    this.computerSatisfied = true
+  }
+
+  isComputerPending() {
+    return this.computerPending && !this.computerSatisfied
+  }
+
   issues() {
     const out = [...this.failures.values()]
-    if (this.computerPending) out.push('Computer work has not passed an explicit visible postcondition after the latest action.')
+    if (this.computerPending && !this.computerSatisfied) out.push('Computer work has not passed an explicit visible postcondition after the latest action.')
     // Source code work isn't necessarily a website. HTML writes are a concrete signal.
     if ([...this.sites].some(([file, checked]) => /\.html?$/.test(file) && !checked)) out.push('Generated HTML has not passed a site check after the latest changes.')
     return out

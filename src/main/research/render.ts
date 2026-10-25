@@ -36,7 +36,38 @@ function researchSession() {
  * Proves the bytes really are a renderable image and yields a universally
  * supported, reasonably sized file. Returns null when Chromium cannot decode it.
  */
-export async function decodeInChromium(buf: Buffer, mime: string, maxWidth = 2000): Promise<{ width: number; height: number; jpeg: Buffer } | null> {
+export async function imageVariants(buf: Buffer, mime: string, widths: number[]): Promise<{ width: number; height: number; bytes: Buffer }[]> {
+  const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await win.loadURL('about:blank')
+    const result = await Promise.race([
+      win.webContents.executeJavaScript(`(async () => {
+        const bin = atob(${JSON.stringify(buf.toString('base64'))});
+        const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+        const bmp = await createImageBitmap(new Blob([bytes], {type:${JSON.stringify(mime)}}));
+        if (bmp.width * bmp.height > 40000000) { bmp.close(); throw new Error('Image exceeds pixel budget'); }
+        const out = [];
+        for (const width of ${JSON.stringify(widths)}) {
+          if (width > bmp.width || width < 1 || width > 3840) continue;
+          const height = Math.max(1, Math.round(bmp.height * width / bmp.width));
+          const canvas = new OffscreenCanvas(width, height);
+          canvas.getContext('2d').drawImage(bmp, 0, 0, width, height);
+          const blob = await canvas.convertToBlob({type:'image/webp',quality:.84});
+          if (blob.type !== 'image/webp') throw new Error('WebP encoder unavailable');
+          const data = new Uint8Array(await blob.arrayBuffer());
+          let s = ''; for (let i = 0; i < data.length; i += 32768) s += String.fromCharCode(...data.subarray(i, i + 32768));
+          out.push({width,height,data:btoa(s)});
+        }
+        bmp.close(); return out;
+      })()`, true),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Responsive encoding timed out')), 20000) })
+    ]) as { width: number; height: number; data: string }[]
+    return result.map(v => ({ width: v.width, height: v.height, bytes: Buffer.from(v.data, 'base64') }))
+  } finally { if (timer) clearTimeout(timer); if (!win.isDestroyed()) win.destroy() }
+}
+
+export async function decodeInChromium(buf: Buffer, mime: string, maxWidth = 3840): Promise<{ width: number; height: number; jpeg: Buffer } | null> {
   const win = new BrowserWindow({ show: false, width: 200, height: 200, webPreferences: { session: researchSession(), sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: true, backgroundThrottling: false } })
   try {
     await win.loadURL('about:blank')

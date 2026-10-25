@@ -13,6 +13,7 @@ import { segmentDistance } from '../src/main/computer/paths'
 import { getNutJs } from '../SWARM/electron/remote/desktop'
 import {SecretStore} from '../src/main/desktop/secrets'
 import {TextAgent} from '../src/main/voice/textAgent'
+import {runComputerTool} from '../src/main/voice/computerTools'
 import type {ToolHost} from '../src/main/voice/extraTools'
 import type {ShellLogger} from '../src/main/backendContext'
 const output = process.env.ZVYRA_COMPUTER_CHECK_DIR!
@@ -50,7 +51,7 @@ try {
   const js = <T>(code: string) => target!.webContents.executeJavaScript(code) as Promise<T>
   const point = async (selector: string) => { const r = await js<{x:number;y:number}>(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`); const b = target!.getContentBounds(); return screen.dipToScreenPoint({ x: b.x+r.x, y: b.y+r.y }) }
   const canvas = async (x: number, y: number) => { const r = await js<{x:number;y:number}>('({x:c.getBoundingClientRect().x,y:c.getBoundingClientRect().y})'); const b = target!.getContentBounds(); return screen.dipToScreenPoint({ x: b.x+r.x+x, y: b.y+r.y+y }) }
-  const check = async (name: string, fn: () => Promise<unknown>) => { if(process.env.ZVYRA_LIVE_ONLY==='1'&&!name.startsWith('live AI'))return;if(process.env.ZVYRA_REAL_APP_ONLY==='1'&&!name.startsWith('real Windows'))return;if(process.env.ZVYRA_REAL_BROWSER_ONLY==='1'&&!name.startsWith('real browser'))return;try { await focus(); const details = await fn(); tests.push({name,ok:true,details}); console.log('PASS',name,JSON.stringify(details??{})) } catch(e) { tests.push({name,ok:false,error:String(e)}); console.error('FAIL',name,String(e)) } }
+  const check = async (name: string, fn: () => Promise<unknown>) => { if(process.env.ZVYRA_RELIABILITY_ONLY==='1'&&!/unexpected dialog|covered target|timestamped screen|session-bound/.test(name))return;if(process.env.ZVYRA_LIVE_ONLY==='1'&&!name.startsWith('live AI'))return;if(process.env.ZVYRA_REAL_APP_ONLY==='1'&&!name.startsWith('real Windows'))return;if(process.env.ZVYRA_REAL_BROWSER_ONLY==='1'&&!name.startsWith('real browser'))return;try { await focus(); const details = await fn(); tests.push({name,ok:true,details}); console.log('PASS',name,JSON.stringify(details??{})) } catch(e) { tests.push({name,ok:false,error:String(e)}); console.error('FAIL',name,String(e)) } }
   await check('capture desktop, map a target in captured pixels, click and verify changed application', async () => {
     const o = await computerController.execute({action:'observe'},null,new AbortController().signal)
     const native = await point('#target'), display=screen.getAllDisplays().find(d=>d.id===o.displayId)!, dip=screen.screenToDipPoint(native)
@@ -114,6 +115,40 @@ try {
     assert.equal(await js<boolean>('unexpected.open'),false)
     await assert.rejects(computerController.execute({action:'click',name:'Dismiss unexpected dialog',frame:o.frame},null,new AbortController().signal),/stale/)
     return {dialogClosed:true,duplicateFrameRejected:true}
+  })
+  await check('covered target is rejected before cursor activation',async()=>{
+    const signal=new AbortController().signal,o=await computerController.execute({action:'observe'},null,signal,true)
+    const control=(o.controls as {ref:string;name:string;type:string}[]).find(e=>e.type==='Button'&&/Verified target|Clicked/.test(e.name));assert.ok(control)
+    const other=new BrowserWindow({x:target!.getBounds().x+15,y:target!.getBounds().y+65,width:230,height:100,alwaysOnTop:true,focusable:false,frame:false})
+    await other.loadURL('data:text/html,<h1>Disposable input blocker</h1>');other.setAlwaysOnTop(true,'screen-saver');other.showInactive();other.moveTop();await wait(200)
+    const occluded=await captureScreen();writeFileSync(join(output,'occluded.jpg'),Buffer.from(occluded.dataUrl.split(',')[1],'base64'))
+    const before=await js<number>('clicks')
+    try {
+      await assert.rejects(computerController.execute({action:'click',frame:o.frame,ref:control.ref},null,signal,true),/covered/);assert.equal(await js<number>('clicks'),before)
+      other.setIgnoreMouseEvents(true,{forward:true});await wait(100)
+      const fresh=await computerController.execute({action:'observe'},null,signal,true)
+      await computerController.execute({action:'click',frame:fresh.frame,name:control.name},null,signal,true)
+      await until(async()=>await js<number>('clicks')===before+1)
+    }
+    finally{other.destroy()}
+    return {occludedClickPrevented:true,clickThroughOverlayVerified:true}
+  })
+  await check('session-bound click works without model frame repetition',async()=>{
+    const signal=new AbortController().signal
+    const host={computerEnabled:async()=>true,geminiKey:()=>null,computerSnapshots:true,computerSession:{},requestApproval:async()=>{throw new Error('Unexpected approval in disposable click check')}} as unknown as ToolHost
+    const o=await runComputerTool(host,{action:'observe'},signal)
+    const control=(o.controls as {ref:string;name:string;type:string}[]).find(e=>e.type==='Button'&&/Verified target|Clicked/.test(e.name));assert.ok(control)
+    const before=await js<number>('clicks')
+    const result=await runComputerTool(host,{action:'click',ref:control.ref},signal)
+    assert.equal(result.inputExecuted,true);await until(async()=>await js<number>('clicks')===before+1)
+    return {physicalClickVerified:true,modelSuppliedFrame:false,sessionFrame:host.computerSession?.frame}
+  })
+  await check('timestamped screen samples expose elapsed changes and a final input frame',async()=>{
+    const result=await computerController.execute({action:'watch',duration_ms:1200,interval_ms:500},null,new AbortController().signal,true)
+    const samples=result.images as {image:string;elapsedMs:number}[]
+    assert.ok(samples.length>=2);assert.ok(Number(result.elapsedMs)>=1200);assert.ok(samples.every(s=>s.image.startsWith('data:image/')))
+    assert.ok(samples.every((s,i)=>i===0||s.elapsedMs>samples[i-1].elapsedMs));assert.equal(typeof result.frame,'string')
+    return {sampleCount:samples.length,elapsedMs:result.elapsedMs,frame:result.frame}
   })
   for(const shape of ['line','circle','spiral','irregular','separate']) await check('native drawing '+shape,async()=>{
     await js('clearCanvas()')

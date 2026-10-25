@@ -73,6 +73,7 @@ import { uia } from '../tools/uia'
 import { computerController } from '../computer/controller'
 import { desktopInput } from '../computer/inputQueue'
 import { isDesktopMission } from '../computer/focusPolicy'
+import { speechPauseMs } from '../voice/turnTaking'
 import { WindowsInfo } from './windowsInfo'
 import { friendlyError, VoiceEngine, type VoiceConfig } from '../voice/engine'
 import { TextAgent } from '../voice/textAgent'
@@ -83,6 +84,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 
 interface Prefs {
+  fastVoiceTurns?: boolean
   voice: Partial<AppSettings['voice']>
   notify: NotificationPolicy
   notifyImported: boolean
@@ -143,6 +145,9 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
   /* --------------------------------------------------------------- state */
 
   const prefs = new JsonDoc<Prefs>(join(dir, 'prefs.json'), PREFS_DEFAULT)
+  // Replace the overly patient default shipped in 0.3.6. Longer pauses can
+  // still be selected explicitly after this one-time migration.
+  if(!prefs.get().fastVoiceTurns) prefs.set(s=>({fastVoiceTurns:true,voice:{...s.voice,silenceTimeoutMs:750}}))
   const filesDoc = new JsonDoc<FilesState>(join(dir, 'files.json'), { roots: [] })
   const terminalDoc = new JsonDoc<TerminalState>(join(dir, 'terminal.json'), { runs: [] })
   const appsDoc = new JsonDoc<AppsState>(join(dir, 'apps.json'), { apps: [] })
@@ -178,7 +183,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       model: v.sttProvider && /live|native-audio/i.test(v.sttProvider) ? v.sttProvider : DEFAULT_LIVE_MODEL,
       voice: v.ttsVoice && GEMINI_VOICES.some((x) => x.name === v.ttsVoice) ? v.ttsVoice : DEFAULT_VOICE,
       idleTimeoutSec: v.listenTimeoutSec ?? 15,
-      silenceMs: v.silenceTimeoutMs ?? 800,
+      silenceMs: speechPauseMs(v.silenceTimeoutMs),
       speakingRate: v.ttsRate ?? 1,
       stayAwake: prefs.get().assistant?.stayAwake ?? false
     }
@@ -883,8 +888,7 @@ export function withDesktopServices(inner: ZvyraBackend, ctx: BackendContext): Z
       .then((r) => {
         push({ status: r.ok ? 'done' : 'error', response: r.reply, error: r.ok ? undefined : 'Verification incomplete' })
         updateCard({ status: r.ok ? 'done' : 'error', label: r.ok ? 'Built' : 'Build incomplete', summary: r.reply.slice(0, 900) })
-        const failed = r.actions.filter((a) => /— failed$/.test(a)).length
-        const bad = !r.ok || (!!failed && !r.files.length)
+        const bad = !r.ok
         if (taskId) agentTasks.finish(taskId, bad ? { status: 'failed', error: r.reply, files: r.files } : { status: 'completed', summary: r.reply, files: r.files })
         // A finished build is announced out loud, like the background builder.
         if (r.files.length && !bad) announce(`Done! Your build is finished: ${shortTitle(text)}.`)

@@ -1,7 +1,7 @@
 {
   "name": "zvyra",
   "productName": "ZVYRA",
-  "version": "0.3.4",
+  "version": "0.3.8",
   "description": "ZVYRA - your AI operating system. Windows-first personal AI agent with a persistent Dynamic Island.",
   "private": true,
   "author": "ZVYRA",

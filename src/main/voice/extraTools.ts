@@ -21,6 +21,7 @@ import { COMPUTER_DECLARATIONS, runComputerTool } from './computerTools'
 import { desktopInput } from '../computer/inputQueue'
 
 export interface ToolHost extends DesktopToolHost, OperatorHost {
+  computerSession?:{frame?:string}
   computerSnapshots?: boolean
   computerEnabled?(): Promise<boolean>
   geminiKey(): string | null
@@ -467,6 +468,10 @@ async function runToolOrdered(host: ToolHost, name: string, args: Record<string,
   try {
     const r = name === 'computer' ? await runComputerTool(host, args, signal) : (await runExtra(host, name, args, signal)) ?? (await runOperatorTool(host, name, args, signal)) ?? (await runDesktopTool(host, name, args, signal))
     if (card) {
+      if(r.recoverable===true) {
+        host.toolActivity({...card,label:'Rechecking target',summary:typeof r.error==='string'?r.error:'The UI changed. Replanning from a fresh observation.',status:'done',updatedAt:new Date().toISOString()})
+        return r
+      }
       const err = typeof r['error'] === 'string' ? (r['error'] as string) : r['ok'] === false ? String(r['verdict'] ?? 'The requested operation did not pass verification.') : undefined
       const label = err ? `${card.label} failed` : r['status'] === 'partial' ? 'Research incomplete' : (DONE_LABEL[card.label] ?? card.label)
       host.toolActivity({ ...card, ...(err ? { summary: err } : summarize(name, r)), label, subject: card.subject, status: err ? 'error' : 'done', updatedAt: new Date().toISOString() })

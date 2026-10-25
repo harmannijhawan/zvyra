@@ -27,6 +27,7 @@ export interface UiRect {
   h: number
 }
 export interface UiElement {
+  clickablePoint?: { x: number; y: number }
   runtimeId?: string
   password?: boolean
   name: string
@@ -79,7 +80,7 @@ public static class ZvU {
 "@
 try { [void][ZvU]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch {}
 $AE = [System.Windows.Automation.AutomationElement]
-function Rect($e) { $r = $e.Current.BoundingRectangle; if ($r.IsEmpty -or [double]::IsInfinity($r.X)) { return $null }; @{ x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width; h = [int]$r.Height } }
+function Rect($e) { if (-not $e) { return $null }; $r = $e.Current.BoundingRectangle; if ($r.IsEmpty -or [double]::IsInfinity($r.X)) { return $null }; @{ x = [int]$r.X; y = [int]$r.Y; w = [int]$r.Width; h = [int]$r.Height } }
 function TypeOf($c) { $c.ControlType.ProgrammaticName -replace '^ControlType\.', '' }
 function Info($e) {
   $c = $e.Current
@@ -121,7 +122,8 @@ function Fg() {
   $h = [ZvU]::GetForegroundWindow(); [uint32]$pid2 = 0; [void][ZvU]::GetWindowThreadProcessId($h, [ref]$pid2)
   $sb = New-Object System.Text.StringBuilder 512; [void][ZvU]::GetWindowText($h, $sb, 512)
   $pn = ''; try { $pn = (Get-Process -Id $pid2).ProcessName } catch {}
-  $el = $AE::FromHandle($h)
+  if ($h -eq [IntPtr]::Zero -or $h.ToInt64() -eq 0) { return @{ hwnd = 0; pid = 0; process = ''; title = ''; rect = $null } }
+  $el = $null; try { $el = $AE::FromHandle($h) } catch {}
   $o = @{ hwnd = $h.ToInt64(); pid = [int]$pid2; process = $pn; title = $sb.ToString(); rect = (Rect $el) }
   if ($pn -match '^(chrome|msedge|brave|vivaldi|opera|firefox|arc)$') {
     $re = '^(Address and search bar|Address bar|Search or enter address|Search with .* or enter address|urlbar-input)$'
@@ -133,6 +135,41 @@ function Fg() {
 function Candidates($root, $req, $types) {
   if ($req.runtimeId) { $found = Walk $root 400 35 $types $null 5000; $hits=New-Object System.Collections.ArrayList; foreach($e in $found) { if(($e.GetRuntimeId() -join '.') -eq $req.runtimeId) { [void]$hits.Add($e) } }; ,$hits }
   else { $found=Walk $root 12 30 $types $req.name 5000; ,$found }
+}
+function HitTarget($pick, [long]$hwnd, [int]$x, [int]$y) {
+  # Native ownership is mandatory even when accessibility returns a stale
+  # descendant. This rejects our own island and unrelated overlay windows.
+  if (-not [ZvU]::IsTargetWindowAtPoint($hwnd,$x,$y)) { return $false }
+  $p=New-Object System.Windows.Point([double]$x,[double]$y)
+  $node=$AE::FromPoint($p)
+  $identity=$pick.GetRuntimeId() -join '.'
+  $hitIdentity=$node.GetRuntimeId() -join '.'
+  $hitType=TypeOf $node.Current
+  $hitNative=$node.Current.NativeWindowHandle
+  $walker=[System.Windows.Automation.TreeWalker]::RawViewWalker
+  for($depth=0;$depth -lt 40 -and $null -ne $node;$depth++) {
+    if(($node.GetRuntimeId() -join '.') -eq $identity){return $true}
+    $node=$walker.GetParent($node)
+  }
+  # Chromium sometimes returns an ancestor Group/Pane instead of a button.
+  # Accept only a proven ancestor, never an arbitrary overlapping sibling.
+  if($hitType -in @('Group','Pane','Window','Document')) {
+    $node=$pick
+    for($depth=0;$depth -lt 40 -and $null -ne $node;$depth++) {
+      if(($node.GetRuntimeId() -join '.') -eq $hitIdentity){return $true}
+      $node=$walker.GetParent($node)
+    }
+    # Embedded Chromium modal fragments can have a different accessibility
+    # root from the native host returned by FromPoint. Require the target
+    # provider's own clickable point as independent evidence in that case.
+    if($hitNative -ne 0 -and -not $pick.Current.IsOffscreen) {
+      try {
+        $cp=$pick.GetClickablePoint()
+        if([Math]::Abs($cp.X-$x) -le 2 -and [Math]::Abs($cp.Y-$y) -le 2){return $true}
+      } catch {}
+    }
+  }
+  return $false
 }
 function Act($e, [string]$how) {
   $c = $e.Current
@@ -165,9 +202,10 @@ while ($true) {
       'foreground' { $out = Fg }
       'focused' { $out = Info $AE::FocusedElement }
       'atPoint' { $p = New-Object System.Windows.Point([double]$req.x,[double]$req.y); $out = Info ($AE::FromPoint($p)) }
+      'checkPoint' { if(-not [ZvU]::IsTargetWindowAtPoint([int64]$req.hwnd,[int]$req.x,[int]$req.y)){throw 'Target is covered by another window; observe again'}; $out=$true }
       'tree' {
         $root = WindowEl $req
-        $types = if ($req.types) { @($req.types) } else { @('Button','Edit','Hyperlink','MenuItem','ListItem','TabItem','CheckBox','RadioButton','ComboBox','Document','Text','Image','SplitButton') }
+        $types = if ($req.types) { @($req.types) } else { @('Button','Edit','Hyperlink','MenuItem','ListItem','TabItem','CheckBox','RadioButton','ComboBox','Document','Text','Image','SplitButton','Slider','TreeItem','DataItem','Spinner','ScrollBar','ProgressBar','ToolBar') }
         $els = Walk $root ([int]$req.max) ([int]$req.depth) $types $req.name 5000
         $out = @($els | ForEach-Object { Info $_ })
       }
@@ -205,18 +243,30 @@ while ($true) {
         $root = WindowEl $req; $els = Candidates $root $req $req.types
         if ($els.Count -ne 1) { throw 'Control must resolve uniquely' }
         $pick=$els[0];if (-not $pick.Current.IsEnabled) { throw 'Control is disabled' }
-        if ($null -ne $req.x -and $null -ne $req.y) {
-          $p=New-Object System.Windows.Point([double]$req.x,[double]$req.y);$node=$AE::FromPoint($p);$hit=$false;$identity=$pick.GetRuntimeId() -join '.';$hitType=TypeOf $node.Current
-          for($depth=0;$depth -lt 40 -and $null -ne $node;$depth++) {
-            if(($node.GetRuntimeId() -join '.') -eq $identity){$hit=$true;break}
-            $node=[System.Windows.Automation.TreeWalker]::RawViewWalker.GetParent($node)
-          }
-          # Some Chromium modal providers return only their host pane for hit
-          # tests. A real HWND hit must still belong to the intended window.
-          if(-not $hit -and $hitType -in @('Pane','Window','Document') -and [ZvU]::IsTargetWindowAtPoint([int64]$req.hwnd,[int]$req.x,[int]$req.y)){$hit=$true}
-          if(-not $hit){throw "Target is covered by another control ($hitType at $($req.x),$($req.y)); observe again"}
-        }
         $out = Info $pick
+        if($req.clickable) {
+          $r=Rect $pick
+          if(-not $r -or $r.w -le 0 -or $r.h -le 0){throw 'Control has no visible mouse target; observe again'}
+          $points=New-Object System.Collections.ArrayList
+          try { $cp=$pick.GetClickablePoint();[void]$points.Add(@([int]$cp.X,[int]$cp.Y)) } catch {}
+          foreach($fraction in @(@(0.5,0.5),@(0.25,0.5),@(0.75,0.5),@(0.5,0.25),@(0.5,0.75))) {
+            [void]$points.Add(@([int]($r.x+$r.w*$fraction[0]),[int]($r.y+$r.h*$fraction[1])))
+          }
+          foreach($pt in $points) {
+            if($pt[0] -ge $r.x -and $pt[0] -lt ($r.x+$r.w) -and $pt[1] -ge $r.y -and $pt[1] -lt ($r.y+$r.h) -and (HitTarget $pick ([int64]$req.hwnd) $pt[0] $pt[1])) {
+              $out.clickablePoint=@{x=$pt[0];y=$pt[1]};break
+            }
+          }
+          if(-not $out.clickablePoint){
+            $cx=[int]($r.x+$r.w/2);$cy=[int]($r.y+$r.h/2);$probe=$AE::FromPoint((New-Object System.Windows.Point([double]$cx,[double]$cy)))
+            $native=[ZvU]::IsTargetWindowAtPoint([int64]$req.hwnd,$cx,$cy)
+            $probeId=$probe.GetRuntimeId() -join '.';$pickId=$pick.GetRuntimeId() -join '.'
+            throw "Target is covered or has no exposed click point (hit=$(TypeOf $probe.Current), native=$native, hitId=$probeId, targetId=$pickId); observe again"
+          }
+        }
+        if ($null -ne $req.x -and $null -ne $req.y) {
+          if(-not (HitTarget $pick ([int64]$req.hwnd) ([int]$req.x) ([int]$req.y))){throw "Target is covered by another control at $($req.x),$($req.y); observe again"}
+        }
       }
       'focus' { $root = WindowEl $req; [ZvU]::Focus([IntPtr]$root.Current.NativeWindowHandle); $out = $true }
       'click' { [ZvU]::Click([int]$req.x, [int]$req.y); $out = $true }
@@ -310,7 +360,8 @@ const list = <T>(r: T | T[] | null | undefined): T[] => (!r ? [] : Array.isArray
 export const exactName = (s: string) => `^${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`
 
 export const uia = {
-  resolve: (t:WindowTarget & {name?:string;runtimeId?:string;types?:string[];x?:number;y?:number})=>host.ask<UiElement>('resolve',t),
+  resolve: (t:WindowTarget & {name?:string;runtimeId?:string;types?:string[];x?:number;y?:number;clickable?:boolean})=>host.ask<UiElement>('resolve',t),
+  checkPoint: (hwnd:number,x:number,y:number)=>host.ask<boolean>('checkPoint',{hwnd,x,y}),
   focused: () => host.ask<UiElement>('focused'),
   atPoint: (x: number,y: number) => host.ask<UiElement>('atPoint',{x,y}),
   focusControl: (t: WindowTarget & {name?:string;runtimeId?:string}) => host.ask<UiElement>('focusControl',t),

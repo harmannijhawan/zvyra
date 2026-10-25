@@ -21,6 +21,8 @@ import { renderPage } from '../research/render'
 import { downloadAssets, downloadStock } from '../research/assets'
 import { researchOutcome, type Dossier } from '../research/dossier'
 import { CATEGORIES, designBrief, type Category } from '../agent/designBrief'
+import { z } from 'zod'
+import { saveWebsiteDesign, websiteDesignSchema } from '../agent/websiteDesign'
 import { checkSite } from '../agent/siteCheck'
 import { buildBusinessSite } from '../agent/businessSite'
 import { previewUrl } from '../agent/staticServer'
@@ -109,6 +111,9 @@ export const OPERATOR_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       type: Type.OBJECT,
       properties: {
         dossier_path: { type: Type.STRING },
+        project_dir: { type: Type.STRING, description: 'Project folder for the persisted website design contract. Required before website implementation.' },
+        specification_json: { type: Type.STRING, description: 'Structured design contract JSON. Omit to retrieve its schema and category inspiration.' },
+        expected_revision: { type: Type.STRING, description: 'Revision read from an existing .zvyra/website-design.json before changing it.' },
         category: { type: Type.STRING, description: 'restaurant | cafe | bakery | bar | jewelry | salon | spa | fashion | tech | fitness | clinic | hotel | realestate | legal | education | retail | generic' },
         description: { type: Type.STRING, description: 'What the business is (when there is no dossier)' }
       }
@@ -419,6 +424,12 @@ export async function runOperatorTool(host: OperatorHost, name: string, args: Re
       return { ok: true, saved: r.saved.map((a) => ({ path: a.relative, attribution: a.attribution, license: a.license, source: a.pageUrl })), skipped: r.skipped.slice(0, 6), credits: r.creditsFile, note: 'Stock: credit each photo (attribution) on the site and never caption it as the business’s own.' }
     }
     case 'design_brief': {
+      if (s(args, 'specification_json')) {
+        if (!s(args, 'project_dir')) return { ok: false, error: 'project_dir is required to save the design contract.' }
+        const root = (await resolveToolPath(host, s(args, 'project_dir'), 'write')).path
+        const result = await saveWebsiteDesign(root, JSON.parse(s(args, 'specification_json')), s(args, 'expected_revision') || undefined)
+        return { ok: true, ...result, note: 'Implement this contract using the existing file tools. Reuse tokensCss, route and component specifications. Preserve unrelated files; validate actual rendered routes.' }
+      }
       let d: Dossier | null = null
       if (s(args, 'dossier_path')) d = await loadDossier((await resolveToolPath(host, s(args, 'dossier_path'))).path)
       const cat = s(args, 'category').toLowerCase()
@@ -429,7 +440,7 @@ export async function runOperatorTool(host: OperatorHost, name: string, args: Re
         themeColor: d?.brand.themeColor,
         available: d ? { menu: d.menu.length, products: d.products.length, images: d.images.filter((i) => i.local).length || d.images.length, phone: !!d.phones.length, whatsapp: !!d.whatsapp.length, address: !!d.addresses.length, hours: !!d.hours.length } : undefined
       })
-      return { ok: true, ...brief, note: 'Paste tokensCss into the stylesheet, load the fonts URL, follow the sections and content rules. Make it specific to this business.' }
+      return { ok: true, ...brief, schema: z.toJSONSchema(websiteDesignSchema), note: 'These category defaults are inspiration only. Compose an original specification matching this brief and commit it with project_dir and specification_json. Read the existing contract first on iterative edits.' }
     }
     case 'check_site': {
       const target = s(args, 'target')
